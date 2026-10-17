@@ -53,6 +53,28 @@ function config(): UserConfig {
     };
   }
 
+  if (target === 'popup') {
+    return {
+      root,
+      base: './',
+      publicDir: false,
+      resolve: { alias },
+      build: {
+        outDir,
+        emptyOutDir: false,
+        sourcemap: true,
+        rollupOptions: {
+          input: resolve(root, 'popup.html'),
+          output: {
+            entryFileNames: 'popup.js',
+            chunkFileNames: 'chunks/[name]-[hash].js',
+            assetFileNames: '[name][extname]',
+          },
+        },
+      },
+    };
+  }
+
   return {
     root,
     publicDir: false,
@@ -63,6 +85,7 @@ function config(): UserConfig {
           { src: 'manifest.json', dest: '.' },
           { src: 'icons/*', dest: 'icons' },
           { src: '../languages.json', dest: '.' },
+          { src: '../SETUP.md', dest: '.' },
         ],
       }),
     ],

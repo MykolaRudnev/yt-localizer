@@ -44,9 +44,10 @@ function updateCount(selected: Set<string>) {
   $('selectedCount').textContent = `${selected.size} selected`;
 }
 
-function readForm(selected: Set<string>): AppSettings {
+function readForm(selected: Set<string>, lastUsed: string[]): AppSettings {
   return {
     selectedLanguages: [...selected],
+    lastUsedLanguages: lastUsed.length ? lastUsed : [...selected],
     engine: ($('engine') as HTMLSelectElement).value as AppSettings['engine'],
     geminiApiKey: ($('geminiApiKey') as HTMLInputElement).value.trim(),
     deeplApiKey: ($('deeplApiKey') as HTMLInputElement).value.trim(),
@@ -62,6 +63,7 @@ function readForm(selected: Set<string>): AppSettings {
       .filter(Boolean),
     defaultSourceLanguage: ($('defaultSourceLanguage') as HTMLInputElement).value.trim() || 'en',
     dryRun: ($('dryRun') as HTMLInputElement).checked,
+    skipExisting: ($('skipExisting') as HTMLInputElement).checked,
   };
 }
 
@@ -78,11 +80,17 @@ function fillForm(s: AppSettings) {
   ($('chapterMode') as HTMLSelectElement).value = s.chapterMode;
   ($('protectedTerms') as HTMLTextAreaElement).value = s.protectedTerms.join('\n');
   ($('dryRun') as HTMLInputElement).checked = s.dryRun;
+  ($('skipExisting') as HTMLInputElement).checked = s.skipExisting;
 }
 
 async function main() {
   const settings = await load();
-  const selected = new Set(settings.selectedLanguages);
+  const selected = new Set(
+    settings.selectedLanguages.length
+      ? settings.selectedLanguages
+      : (data.presets.top10?.codes ?? []),
+  );
+  let lastUsed = [...(settings.lastUsedLanguages?.length ? settings.lastUsedLanguages : selected)];
   fillForm(settings);
   renderLangList(selected, '');
 
@@ -101,7 +109,10 @@ async function main() {
       const key = (btn as HTMLElement).dataset.preset!;
       if (key === 'none') selected.clear();
       else if (key === 'all') data.languages.forEach((l) => selected.add(l.code));
-      else {
+      else if (key === 'last') {
+        selected.clear();
+        lastUsed.forEach((c) => selected.add(c));
+      } else {
         const preset = data.presets[key];
         if (preset) {
           selected.clear();
@@ -113,7 +124,8 @@ async function main() {
   });
 
   $('save').addEventListener('click', async () => {
-    const next = readForm(selected);
+    lastUsed = [...selected];
+    const next = readForm(selected, lastUsed);
     await chrome.storage.local.set({ settings: next });
     $('status').textContent = 'Saved.';
     setTimeout(() => {

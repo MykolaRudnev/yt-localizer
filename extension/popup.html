@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VeilTranslate</title>
+    <link rel="stylesheet" href="/src/popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header>
+        <h1>VeilTranslate</h1>
+        <a href="#" id="openOptions">Options</a>
+      </header>
+
+      <section id="checklist" class="checklist hidden">
+        <h2>Setup checklist</h2>
+        <ul id="checklistItems"></ul>
+        <p class="hint">
+          Follow
+          <a href="#" id="setupLink">SETUP.md</a>
+          (§3 OAuth client, §4 Gemini key).
+        </p>
+      </section>
+
+      <section>
+        <h2>Account</h2>
+        <div id="authBox" class="auth">
+          <button type="button" id="loginBtn" class="primary">Login with Google</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Status</h2>
+        <dl class="status">
+          <div><dt>Engine</dt><dd id="engineStatus">—</dd></div>
+          <div><dt>Languages</dt><dd id="langCount">—</dd></div>
+        </dl>
+        <label class="row">
+          <input type="checkbox" id="dryRun" />
+          Dry-run (preview only)
+        </label>
+      </section>
+    </main>
+    <script type="module" src="/src/popup.ts"></script>
+  </body>
+</html>

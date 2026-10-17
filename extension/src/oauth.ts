@@ -1,4 +1,11 @@
-import { clearAccessToken, getAccessToken, getSettings, setAccessToken } from './storage';
+import {
+  clearAccessToken,
+  getAccessToken,
+  getAccountEmail,
+  getSettings,
+  setAccessToken,
+  setAccountEmail,
+} from './storage';
 
 const SCOPE = 'https://www.googleapis.com/auth/youtube.force-ssl';
 
@@ -38,5 +45,38 @@ export async function launchOAuth(): Promise<string> {
     throw new Error('No access_token in OAuth response');
   }
   await setAccessToken(token, expiresIn);
+  await fetchAndStoreAccount(token);
   return token;
+}
+
+async function fetchAndStoreAccount(token: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { email?: string };
+    if (data.email) {
+      await setAccountEmail(data.email);
+      return data.email;
+    }
+  } catch {
+    // optional — popup can still show "Signed in"
+  }
+  return null;
+}
+
+export async function getAuthState(): Promise<{
+  loggedIn: boolean;
+  email: string | null;
+}> {
+  const token = await getAccessToken();
+  if (!token) return { loggedIn: false, email: null };
+  let email = await getAccountEmail();
+  if (!email) email = await fetchAndStoreAccount(token);
+  return { loggedIn: true, email };
+}
+
+export async function logout(): Promise<void> {
+  await clearAccessToken();
 }

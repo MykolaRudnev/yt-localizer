@@ -1,3 +1,4 @@
+import { mergeLocalizations } from './langs.js';
 import type { YoutubeVideo } from './types.js';
 
 const YT = 'https://www.googleapis.com/youtube/v3';
@@ -70,10 +71,7 @@ export async function updateLocalizations(
   accessToken: string,
   newLocalizations: Record<string, { title: string; description: string }>,
 ): Promise<void> {
-  const merged = {
-    ...(video.localizations ?? {}),
-    ...newLocalizations,
-  };
+  const merged = mergeLocalizations(video.localizations, newLocalizations);
   const sn = video.snippet;
   await youtubeFetch(`/videos?part=snippet,localizations`, accessToken, {
     method: 'PUT',
