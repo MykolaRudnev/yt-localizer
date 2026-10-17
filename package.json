@@ -6,16 +6,18 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:extension && npm run build:cli",
-    "build:extension": "VT_TARGET=background vite build --config extension/vite.config.ts && VT_TARGET=content vite build --config extension/vite.config.ts && VT_TARGET=options vite build --config extension/vite.config.ts",
+    "build:extension": "VT_TARGET=background vite build --config extension/vite.config.ts && VT_TARGET=content vite build --config extension/vite.config.ts && VT_TARGET=options vite build --config extension/vite.config.ts && VT_TARGET=popup vite build --config extension/vite.config.ts",
     "build:cli": "tsc -p cli/tsconfig.json",
     "dev": "npm run build:extension",
     "test": "vitest run",
     "test:watch": "vitest",
+    "screenshots": "node extension/dev/capture-screenshots.mjs",
     "yt-translate": "node cli/dist/cli/src/index.js"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "@types/node": "^22.10.2",
+    "playwright": "^1.49.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vite-plugin-static-copy": "^2.2.0",

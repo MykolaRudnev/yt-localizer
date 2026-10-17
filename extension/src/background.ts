@@ -1,26 +1,30 @@
+import { filterLanguagesForTranslate } from '@shared/langs';
 import { translateAllLanguages } from '@shared/pipeline';
+import { DEFAULT_SETTINGS, type JobLogEntry, type LocalizationResult } from '@shared/types';
 import {
   ensureDefaultLanguage,
   listVideo,
   updateLocalizations,
 } from '@shared/youtube';
-import type { JobLogEntry, LocalizationResult } from '@shared/types';
-import { getValidAccessToken } from './oauth';
-import { appendJobLog, getSettings } from './storage';
+import { getAuthState, getValidAccessToken, launchOAuth, logout } from './oauth';
+import { appendJobLog, getSettings, patchSettings, saveSettings } from './storage';
 
 type Msg =
-  | { type: 'START_TRANSLATE'; videoId: string }
+  | { type: 'START_TRANSLATE'; videoId: string; languages?: string[]; skipExisting?: boolean }
   | { type: 'PUBLISH'; videoId: string; localizations: LocalizationResult[] }
+  | { type: 'FETCH_VIDEO_META'; videoId: string }
   | { type: 'GET_SETTINGS' }
-  | { type: 'OPEN_OPTIONS' }
-  | { type: 'PROGRESS_PING' };
+  | { type: 'PATCH_SETTINGS'; partial: Partial<typeof DEFAULT_SETTINGS> }
+  | { type: 'GET_AUTH_STATE' }
+  | { type: 'LOGIN' }
+  | { type: 'LOGOUT' }
+  | { type: 'OPEN_OPTIONS' };
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('VeilTranslate installed');
-});
-
-chrome.action.onClicked.addListener(() => {
-  chrome.runtime.openOptionsPage();
+chrome.runtime.onInstalled.addListener(async () => {
+  const data = await chrome.storage.local.get('settings');
+  if (!data.settings) {
+    await saveSettings({ ...DEFAULT_SETTINGS });
+  }
 });
 
 chrome.runtime.onMessage.addListener((message: Msg, sender, sendResponse) => {
@@ -42,8 +46,23 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       return { ok: true };
     case 'GET_SETTINGS':
       return { ok: true, settings: await getSettings() };
+    case 'PATCH_SETTINGS': {
+      const settings = await patchSettings(message.partial);
+      return { ok: true, settings };
+    }
+    case 'GET_AUTH_STATE':
+      return { ok: true, ...(await getAuthState()) };
+    case 'LOGIN': {
+      await launchOAuth();
+      return { ok: true, ...(await getAuthState()) };
+    }
+    case 'LOGOUT':
+      await logout();
+      return { ok: true, loggedIn: false, email: null };
+    case 'FETCH_VIDEO_META':
+      return fetchVideoMeta(message.videoId);
     case 'START_TRANSLATE':
-      return startTranslate(message.videoId, tabId);
+      return startTranslate(message.videoId, tabId, message.languages, message.skipExisting);
     case 'PUBLISH':
       return publish(message.videoId, message.localizations);
     default:
@@ -60,10 +79,32 @@ async function notifyTab(tabId: number | undefined, payload: unknown) {
   }
 }
 
-async function startTranslate(videoId: string, tabId?: number) {
+async function fetchVideoMeta(videoId: string) {
+  const token = await getValidAccessToken();
+  const video = await listVideo(videoId, token);
+  return {
+    ok: true,
+    videoId: video.id,
+    title: video.snippet.title,
+    description: video.snippet.description,
+    defaultLanguage: video.snippet.defaultLanguage,
+    existingLocalizations: video.localizations ?? {},
+    existingCodes: Object.keys(video.localizations ?? {}),
+  };
+}
+
+async function startTranslate(
+  videoId: string,
+  tabId: number | undefined,
+  languagesOverride?: string[],
+  skipExistingOverride?: boolean,
+) {
   const settings = await getSettings();
-  if (!settings.selectedLanguages.length) {
-    throw new Error('Select at least one language in Options.');
+  const selected =
+    languagesOverride?.length ? languagesOverride : settings.selectedLanguages;
+
+  if (!selected.length) {
+    throw new Error('Select at least one language.');
   }
   if (settings.engine === 'gemini' && !settings.geminiApiKey) {
     throw new Error('Gemini API key missing. Open Options to add it.');
@@ -72,28 +113,61 @@ async function startTranslate(videoId: string, tabId?: number) {
     throw new Error('DeepL API key missing. Open Options to add it.');
   }
 
+  // Remember last selection
+  await patchSettings({
+    selectedLanguages: selected,
+    lastUsedLanguages: selected,
+  });
+
   const token = await getValidAccessToken();
   let video = await listVideo(videoId, token);
 
   if (!video.snippet.defaultLanguage) {
-    // Setting defaultLanguage is a write — skip in dry-run and use configured default locally
     if (settings.dryRun) {
       video = {
         ...video,
-        snippet: { ...video.snippet, defaultLanguage: settings.defaultSourceLanguage || 'en' },
+        snippet: {
+          ...video.snippet,
+          defaultLanguage: settings.defaultSourceLanguage || 'en',
+        },
       };
       await notifyTab(tabId, {
         type: 'VT_STATUS',
         message: `Dry-run: would set defaultLanguage=${video.snippet.defaultLanguage}`,
       });
     } else {
-      video = await ensureDefaultLanguage(video, token, settings.defaultSourceLanguage || 'en');
+      video = await ensureDefaultLanguage(
+        video,
+        token,
+        settings.defaultSourceLanguage || 'en',
+      );
     }
+  }
+
+  const skipExisting = skipExistingOverride ?? settings.skipExisting;
+  const langs = filterLanguagesForTranslate(selected, video.localizations, {
+    skipExisting,
+    defaultLanguage: video.snippet.defaultLanguage,
+  });
+
+  if (!langs.length) {
+    return {
+      ok: true,
+      dryRun: settings.dryRun,
+      source: {
+        title: video.snippet.title,
+        description: video.snippet.description,
+        defaultLanguage: video.snippet.defaultLanguage,
+      },
+      existingLocalizations: video.localizations ?? {},
+      results: [] as LocalizationResult[],
+      failed: [] as { language: string; error: string }[],
+      skippedAll: true,
+    };
   }
 
   const title = video.snippet.title;
   const description = video.snippet.description;
-  const langs = settings.selectedLanguages.filter((l) => l !== video.snippet.defaultLanguage);
 
   await notifyTab(tabId, {
     type: 'VT_PROGRESS',
@@ -137,13 +211,19 @@ async function startTranslate(videoId: string, tabId?: number) {
 async function publish(videoId: string, localizations: LocalizationResult[]) {
   const settings = await getSettings();
   if (settings.dryRun) {
-    throw new Error('Dry-run is ON — Publish is disabled. Turn off dry-run in Options to publish.');
+    throw new Error(
+      'Dry-run is ON — Publish is disabled. Turn off dry-run to publish.',
+    );
   }
 
   const token = await getValidAccessToken();
-  const video = await listVideo(videoId, token);
+  let video = await listVideo(videoId, token);
   if (!video.snippet.defaultLanguage) {
-    await ensureDefaultLanguage(video, token, settings.defaultSourceLanguage || 'en');
+    video = await ensureDefaultLanguage(
+      video,
+      token,
+      settings.defaultSourceLanguage || 'en',
+    );
   }
   const fresh = await listVideo(videoId, token);
 

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VeilTranslate mock harness (dev)</title>
+    <style>
+      :root {
+        --bg: #0f1419;
+        --panel: #1a222c;
+        --text: #e8eef4;
+        --muted: #8b9aab;
+        --accent: #3d9a6a;
+        --border: #2a3542;
+        --warn: #c9a227;
+        --danger: #d97878;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #2a2a2a;
+        color: var(--text);
+        padding: 24px;
+      }
+      h1.dev-title { color: #fff; font-size: 1rem; margin: 0 0 1rem; opacity: 0.7; }
+      .shot {
+        margin: 0 0 48px;
+        background: #111;
+        padding: 24px;
+        border-radius: 8px;
+      }
+      .shot-label {
+        color: #888;
+        font-size: 0.75rem;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      /* Shared modal look */
+      .vt-frame {
+        background: rgba(0, 0, 0, 0.55);
+        padding: 24px;
+        display: flex;
+        justify-content: center;
+        border-radius: 4px;
+      }
+      .vt-panel {
+        background: var(--panel);
+        color: var(--text);
+        width: 720px;
+        border-radius: 12px;
+        padding: 1.25rem;
+        border: 1px solid var(--border);
+      }
+      .vt-panel.wide { width: 920px; }
+      .vt-panel h2 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+      .vt-meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 0.75rem; }
+      .vt-banner-dry {
+        background: #3a3218;
+        border: 1px solid var(--warn);
+        color: #f0e2a8;
+        border-radius: 8px;
+        padding: 0.65rem 0.85rem;
+        margin-bottom: 0.85rem;
+        font-size: 0.88rem;
+      }
+      .vt-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+      .vt-chip {
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        padding: 0.35rem 0.75rem;
+        font-size: 0.82rem;
+      }
+      .vt-search {
+        width: 100%;
+        margin-bottom: 0.65rem;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.45rem 0.65rem;
+      }
+      .vt-lang-grid {
+        max-height: 220px;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.25rem 0.5rem;
+        margin-bottom: 0.85rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.5rem;
+        background: var(--bg);
+      }
+      .vt-lang-item {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.82rem;
+        padding: 0.15rem;
+      }
+      .vt-badge {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        background: #2a4050;
+        color: #9ec9e8;
+        border-radius: 4px;
+        padding: 0.1rem 0.35rem;
+      }
+      .vt-picker-footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.88rem;
+      }
+      .vt-count { color: var(--accent); font-weight: 600; }
+      .vt-actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1rem; }
+      button {
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        padding: 0.5rem 1rem;
+        font: inherit;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+      button:disabled { opacity: 0.45; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+      th, td { border: 1px solid var(--border); padding: 0.4rem; vertical-align: top; }
+      input.vt-title, textarea.vt-desc {
+        width: 100%;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.35rem;
+        font: inherit;
+      }
+      .warn { color: var(--warn); font-size: 0.75rem; }
+      .vt-check { display: inline-flex; align-items: center; gap: 0.35rem; margin-bottom: 0.75rem; }
+
+      /* Popup */
+      .popup {
+        width: 320px;
+        background: var(--bg);
+        padding: 0.9rem 1rem 1.1rem;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+      .popup header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.75rem; }
+      .popup h1 { margin: 0; font-size: 1.05rem; }
+      .popup h2 {
+        margin: 0 0 0.45rem;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .popup section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.65rem;
+      }
+      .popup a { color: var(--accent); font-size: 0.85rem; }
+      .checklist { border-color: var(--warn); background: #2a2414; }
+      .checklist ul { margin: 0 0 0.5rem; padding-left: 1.1rem; font-size: 0.85rem; }
+      .checklist li.missing { color: var(--warn); }
+      .hint { margin: 0; font-size: 0.78rem; color: var(--muted); }
+      .status { margin: 0 0 0.55rem; display: grid; gap: 0.35rem; }
+      .status div { display: flex; justify-content: space-between; font-size: 0.88rem; }
+      .status dt { color: var(--muted); margin: 0; }
+      .status dd { margin: 0; font-weight: 600; }
+      .row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; }
+      .email { font-size: 0.88rem; }
+
+      /* Options */
+      .options {
+        width: 720px;
+        background: var(--bg);
+        padding: 2rem 1.25rem;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+      .options h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
+      .options .sub { color: var(--muted); margin: 0 0 1.5rem; }
+      .options section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+      }
+      .options h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+      .options label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin-bottom: 0.85rem;
+        font-size: 0.9rem;
+      }
+      .options label.row { flex-direction: row; align-items: center; gap: 0.5rem; }
+      .options input, .options select {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.5rem 0.65rem;
+        font: inherit;
+      }
+      .presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+      .lang-list {
+        max-height: 160px;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.25rem 0.75rem;
+      }
+      .count { color: var(--accent); font-size: 0.85rem; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1 class="dev-title">VeilTranslate mock harness — fake data, no network</h1>
+
+    <!-- MODAL -->
+    <div class="shot" id="shot-modal">
+      <div class="shot-label">modal.png</div>
+      <div class="vt-frame">
+        <div class="vt-panel">
+          <h2>Auto Titles &amp; Description</h2>
+          <div class="vt-meta">Ancient Slavic Myths Explained · default: en</div>
+          <div class="vt-banner-dry">Dry-run ON — preview only; Publish will stay disabled until you turn this off.</div>
+          <div class="vt-chips">
+            <span class="vt-chip">Top 10</span>
+            <span class="vt-chip">Top 20</span>
+            <span class="vt-chip">Top 10 RPM (estimate)</span>
+            <span class="vt-chip">All</span>
+            <span class="vt-chip">Last used</span>
+          </div>
+          <input class="vt-search" value="" placeholder="Search languages…" readonly />
+          <div class="vt-lang-grid">
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇪🇸 Spanish (es) <span class="vt-badge">exists</span></label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇧🇷 Portuguese (pt)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇮🇳 Hindi (hi)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇮🇩 Indonesian (id)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇷🇺 Russian (ru) <span class="vt-badge">exists</span></label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇯🇵 Japanese (ja)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇰🇷 Korean (ko)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇩🇪 German (de)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇫🇷 French (fr)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇸🇦 Arabic (ar)</label>
+          </div>
+          <div class="vt-picker-footer">
+            <span class="vt-count">10 selected · 2 already localized</span>
+            <label><input type="radio" checked disabled /> Skip existing</label>
+            <label><input type="radio" disabled /> Overwrite</label>
+            <label><input type="checkbox" checked disabled /> Dry-run</label>
+          </div>
+          <div class="vt-actions">
+            <button type="button">Cancel</button>
+            <button type="button" class="primary">Translate 10 languages</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="shot" id="shot-preview">
+      <div class="shot-label">preview.png</div>
+      <div class="vt-frame">
+        <div class="vt-panel wide">
+          <h2>Preview translations</h2>
+          <div class="vt-banner-dry">Dry-run ON — Publish disabled. Uncheck below to enable publishing.</div>
+          <div class="vt-meta">Video: dQw4w9WgXcQ · Source: Ancient Slavic Myths Explained</div>
+          <label class="vt-check"><input type="checkbox" checked disabled /> Dry-run (preview only)</label>
+          <table>
+            <thead><tr><th>Language</th><th>Title</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>es</td>
+                <td><input class="vt-title" value="Mitos eslavos antiguos explicados" readonly /></td>
+                <td><textarea class="vt-desc" rows="3" readonly>Descubre las leyendas de Veil of Veles…
+
+#Myth #Slavic</textarea></td>
+              </tr>
+              <tr>
+                <td>de</td>
+                <td>
+                  <input class="vt-title" value="Antike slawische Mythen erklärt — Veil of Veles Channel Special Long Title Extra" readonly />
+                  <div class="warn">Title &gt; 100 (108)</div>
+                </td>
+                <td><textarea class="vt-desc" rows="3" readonly>Entdecke die Legenden von Veil of Veles…
+
+#Myth #Slavic</textarea></td>
+              </tr>
+              <tr>
+                <td>ja</td>
+                <td><input class="vt-title" value="古代スラブ神話を解説" readonly /></td>
+                <td><textarea class="vt-desc" rows="3" readonly>Veil of Veles の伝説を解説します…
+
+#Myth #Slavic</textarea></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="vt-actions">
+            <button type="button">Cancel</button>
+            <button type="button" class="primary" disabled>Publish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POPUP -->
+    <div class="shot" id="shot-popup">
+      <div class="shot-label">popup.png</div>
+      <div class="popup">
+        <header>
+          <h1>VeilTranslate</h1>
+          <a href="#">Options</a>
+        </header>
+        <section class="checklist">
+          <h2>Setup checklist</h2>
+          <ul>
+            <li class="missing">○ OAuth Client ID (SETUP.md §3)</li>
+            <li class="missing">○ Gemini API key (SETUP.md §4)</li>
+          </ul>
+          <p class="hint">Follow <a href="#">SETUP.md</a> (§3 OAuth client, §4 Gemini key).</p>
+        </section>
+        <section>
+          <h2>Account</h2>
+          <button type="button" class="primary">Login with Google</button>
+        </section>
+        <section>
+          <h2>Status</h2>
+          <dl class="status">
+            <div><dt>Engine</dt><dd>gemini · key missing</dd></div>
+            <div><dt>Languages</dt><dd>10 selected</dd></div>
+          </dl>
+          <label class="row"><input type="checkbox" checked disabled /> Dry-run (preview only)</label>
+        </section>
+      </div>
+    </div>
+
+    <!-- OPTIONS -->
+    <div class="shot" id="shot-options">
+      <div class="shot-label">options.png</div>
+      <div class="options">
+        <h1>VeilTranslate</h1>
+        <p class="sub">Configure languages, engines, and publishing defaults.</p>
+        <section>
+          <h2>OAuth</h2>
+          <label>Google OAuth Client ID
+            <input type="text" value="" placeholder="xxxx.apps.googleusercontent.com" readonly />
+          </label>
+        </section>
+        <section>
+          <h2>Translation engine</h2>
+          <label>Engine
+            <select disabled><option>Gemini (default)</option></select>
+          </label>
+          <label>Gemini API key
+            <input type="password" value="" readonly />
+          </label>
+        </section>
+        <section>
+          <h2>Languages <span class="count">10 selected</span></h2>
+          <div class="presets">
+            <button type="button">Top 10</button>
+            <button type="button">Top 20</button>
+            <button type="button">Top 10 RPM (estimate)</button>
+            <button type="button">Last used</button>
+            <button type="button">Select all</button>
+          </div>
+          <div class="lang-list">
+            <label class="row"><input type="checkbox" checked disabled /> Spanish (es)</label>
+            <label class="row"><input type="checkbox" checked disabled /> Portuguese (pt)</label>
+            <label class="row"><input type="checkbox" checked disabled /> Hindi (hi)</label>
+            <label class="row"><input type="checkbox" checked disabled /> Indonesian (id)</label>
+            <label class="row"><input type="checkbox" checked disabled /> Russian (ru)</label>
+            <label class="row"><input type="checkbox" checked disabled /> Japanese (ja)</label>
+          </div>
+        </section>
+        <section>
+          <h2>Translation options</h2>
+          <label class="row"><input type="checkbox" checked disabled /> Dry-run (preview only — Publish disabled; ON by default on first install)</label>
+          <label class="row"><input type="checkbox" checked disabled /> Skip existing localizations</label>
+        </section>
+        <button type="button" class="primary">Save</button>
+      </div>
+    </div>
+  </body>
+</html>

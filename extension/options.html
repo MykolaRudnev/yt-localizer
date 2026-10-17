@@ -54,6 +54,7 @@
           <button type="button" data-preset="top10">Top 10</button>
           <button type="button" data-preset="top20">Top 20</button>
           <button type="button" data-preset="top10rpm" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
+          <button type="button" data-preset="last">Last used</button>
           <button type="button" data-preset="all">Select all</button>
           <button type="button" data-preset="none">Clear</button>
         </div>
@@ -94,7 +95,11 @@
         </label>
         <label class="row">
           <input id="dryRun" type="checkbox" />
-          Dry-run (preview only — Publish disabled)
+          Dry-run (preview only — Publish disabled; ON by default on first install)
+        </label>
+        <label class="row">
+          <input id="skipExisting" type="checkbox" />
+          Skip existing localizations (default on; use Overwrite in the Studio modal to replace)
         </label>
       </section>
 

@@ -39,6 +39,8 @@ export interface EngineConfig {
 
 export interface AppSettings {
   selectedLanguages: string[];
+  /** Snapshot of the last Translate click selection (for "Last used" preset). */
+  lastUsedLanguages: string[];
   engine: EngineId;
   geminiApiKey: string;
   deeplApiKey: string;
@@ -51,10 +53,27 @@ export interface AppSettings {
   protectedTerms: string[];
   defaultSourceLanguage: string;
   dryRun: boolean;
+  /** When true, do not re-translate languages that already have a localization. */
+  skipExisting: boolean;
 }
 
+/** Keep in sync with languages.json presets.top10 */
+const TOP10_DEFAULT = [
+  'es',
+  'pt',
+  'hi',
+  'id',
+  'ru',
+  'ja',
+  'ko',
+  'de',
+  'fr',
+  'ar',
+];
+
 export const DEFAULT_SETTINGS: AppSettings = {
-  selectedLanguages: [],
+  selectedLanguages: [...TOP10_DEFAULT],
+  lastUsedLanguages: [...TOP10_DEFAULT],
   engine: 'gemini',
   geminiApiKey: '',
   deeplApiKey: '',
@@ -67,6 +86,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   protectedTerms: ['Veil of Veles'],
   defaultSourceLanguage: 'en',
   dryRun: true,
+  skipExisting: true,
 };
 
 export interface JobLogEntry {
