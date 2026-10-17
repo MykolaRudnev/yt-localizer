@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VeilTranslate Options</title>
+    <link rel="stylesheet" href="/src/options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>VeilTranslate</h1>
+      <p class="sub">Configure languages, engines, and publishing defaults.</p>
+
+      <section>
+        <h2>OAuth</h2>
+        <label>
+          Google OAuth Client ID
+          <input id="oauthClientId" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" />
+        </label>
+        <p class="hint">Web application client. Redirect URI: <code id="redirectUri">https://&lt;extension-id&gt;.chromiumapp.org/</code></p>
+      </section>
+
+      <section>
+        <h2>Translation engine</h2>
+        <label>
+          Engine
+          <select id="engine">
+            <option value="gemini">Gemini (default)</option>
+            <option value="deepl">DeepL Free</option>
+            <option value="libretranslate">LibreTranslate</option>
+          </select>
+        </label>
+        <label>
+          Gemini API key
+          <input id="geminiApiKey" type="password" autocomplete="off" />
+        </label>
+        <label>
+          DeepL Free API key
+          <input id="deeplApiKey" type="password" autocomplete="off" />
+        </label>
+        <label>
+          LibreTranslate URL
+          <input id="libreTranslateUrl" type="url" placeholder="http://localhost:5000" />
+        </label>
+        <label>
+          LibreTranslate API key (optional)
+          <input id="libreTranslateApiKey" type="password" autocomplete="off" />
+        </label>
+      </section>
+
+      <section>
+        <h2>Languages <span id="selectedCount" class="count">0 selected</span></h2>
+        <div class="presets">
+          <button type="button" data-preset="top10">Top 10</button>
+          <button type="button" data-preset="top20">Top 20</button>
+          <button type="button" data-preset="top10rpm" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
+          <button type="button" data-preset="all">Select all</button>
+          <button type="button" data-preset="none">Clear</button>
+        </div>
+        <input id="langSearch" type="search" placeholder="Search languages…" />
+        <div id="langList" class="lang-list"></div>
+      </section>
+
+      <section>
+        <h2>Translation options</h2>
+        <label>
+          Default source language
+          <input id="defaultSourceLanguage" type="text" maxlength="16" />
+        </label>
+        <label>
+          Title &gt; 100 chars
+          <select id="titleOver100">
+            <option value="truncate">Truncate at word boundary</option>
+            <option value="ai_shorten">Ask AI to shorten (LLM engines)</option>
+          </select>
+        </label>
+        <label>
+          Hashtags
+          <select id="hashtagMode">
+            <option value="keep">Keep as is</option>
+            <option value="translate">Translate</option>
+          </select>
+        </label>
+        <label>
+          Chapter lines (3+ timestamp lines)
+          <select id="chapterMode">
+            <option value="translate_labels">Translate labels, keep timestamps</option>
+            <option value="keep">Keep lines as is</option>
+          </select>
+        </label>
+        <label>
+          Protected terms (one per line)
+          <textarea id="protectedTerms" rows="4"></textarea>
+        </label>
+        <label class="row">
+          <input id="dryRun" type="checkbox" />
+          Dry-run (preview only — Publish disabled)
+        </label>
+      </section>
+
+      <div class="actions">
+        <button type="button" id="save" class="primary">Save</button>
+        <span id="status" role="status"></span>
+      </div>
+    </main>
+    <script type="module" src="/src/options.ts"></script>
+  </body>
+</html>

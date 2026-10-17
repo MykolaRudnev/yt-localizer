@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "VeilTranslate",
+  "version": "1.0.0",
+  "description": "Translate YouTube titles & descriptions into localizations from Studio.",
+  "permissions": ["storage", "identity"],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api-free.deepl.com/*",
+    "https://api.deepl.com/*",
+    "http://localhost:5000/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://studio.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "VeilTranslate",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["languages.json"],
+      "matches": ["https://studio.youtube.com/*"]
+    }
+  ]
+}

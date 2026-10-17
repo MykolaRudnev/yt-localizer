@@ -1,0 +1,15 @@
+node_modules/
+dist/
+extension/dist/
+cli/dist/
+.env
+.env.*
+*.key
+tokens
+tokens.json
+.cli-secrets.json
+*.pem
+.DS_Store
+*.log
+coverage/
+.vite/
