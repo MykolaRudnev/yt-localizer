@@ -26,7 +26,8 @@ export function deeplSupports(lang: string): boolean {
 }
 
 export function createDeeplEngine(apiKey: string): TranslationEngine {
-  const endpoint = apiKey.endsWith(':fx')
+  const key = apiKey.trim();
+  const endpoint = key.endsWith(':fx')
     ? 'https://api-free.deepl.com/v2/translate'
     : 'https://api.deepl.com/v2/translate';
 
@@ -52,7 +53,7 @@ export function createDeeplEngine(apiKey: string): TranslationEngine {
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            Authorization: `DeepL-Auth-Key ${apiKey}`,
+            Authorization: `DeepL-Auth-Key ${key}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body,

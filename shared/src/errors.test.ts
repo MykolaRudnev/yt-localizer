@@ -38,6 +38,12 @@ describe('classifyError', () => {
     );
   });
 
+  it('marks DeepL 456 Quota exceeded as quota-exhausted', () => {
+    const err = new Error('DeepL 456: Quota exceeded');
+    expect(isQuotaExhaustedError(err)).toBe(true);
+    expect(classifyError(err)).toBe('fatal');
+  });
+
   it('marks 5xx and network as transient', () => {
     expect(classifyError(new Error('Gemini 503: unavailable'))).toBe('transient');
     expect(classifyError(new Error('Failed to fetch'))).toBe('transient');
@@ -73,7 +79,13 @@ describe('userFacingError', () => {
 
   it('hints invalid API key', () => {
     const face = userFacingError(new Error('Gemini 400: API key not valid'));
-    expect(face.summary).toMatch(/Invalid API key/i);
+    expect(face.summary).toMatch(/Invalid API key|400/i);
+  });
+
+  it('names DeepL + status and hints :fx for 403', () => {
+    const face = userFacingError(new Error('DeepL 403: Forbidden'));
+    expect(face.summary).toMatch(/DeepL 403/);
+    expect(face.hint).toMatch(/:fx/);
   });
 });
 

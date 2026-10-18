@@ -1,11 +1,11 @@
-import {
-  DEFAULT_SETTINGS,
-  type AppSettings,
-  type ChannelSettings,
-  type ConnectedChannel,
-  type JobLogEntry,
+import type {
+  AppSettings,
+  ChannelSettings,
+  ConnectedChannel,
+  JobLogEntry,
 } from '@shared/types';
 import { seedChannelSettings } from '@shared/channels';
+import { normalizeAppSettings, trimSettingsKeys } from '@shared/settings';
 
 const SETTINGS_KEY = 'settings';
 const JOBS_KEY = 'jobLogs';
@@ -25,16 +25,19 @@ const LEGACY_ACCOUNT_KEY = 'accountEmail';
 
 export async function getSettings(): Promise<AppSettings> {
   const data = await chrome.storage.local.get(SETTINGS_KEY);
-  return { ...DEFAULT_SETTINGS, ...(data[SETTINGS_KEY] as Partial<AppSettings> | undefined) };
+  // Always read fresh from storage and trim keys — no in-memory cache.
+  return normalizeAppSettings(
+    (data[SETTINGS_KEY] as Partial<AppSettings> | undefined) ?? {},
+  );
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
+  await chrome.storage.local.set({ [SETTINGS_KEY]: trimSettingsKeys(settings) });
 }
 
 export async function patchSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
   const current = await getSettings();
-  const next = { ...current, ...partial };
+  const next = trimSettingsKeys({ ...current, ...partial });
   await saveSettings(next);
   return next;
 }

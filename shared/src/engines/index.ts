@@ -50,25 +50,30 @@ function knownJsonMode(config: EngineConfig, model: string): boolean | undefined
 export async function createEngine(config: EngineConfig): Promise<TranslationEngine> {
   switch (config.engine) {
     case 'gemini': {
-      if (!config.geminiApiKey) throw new Error('Gemini API key is required');
+      const key = config.geminiApiKey?.trim();
+      if (!key) throw new Error('Gemini API key is required');
       const { model, autoPicked } = await resolveGeminiModel(
-        config.geminiApiKey,
+        key,
         config.geminiModel,
         config.geminiAutoModel,
       );
       if (autoPicked) await config.onGeminiModelResolved?.(model);
-      return createGeminiEngine(config.geminiApiKey, model, {
+      return createGeminiEngine(key, model, {
         onModelResolved: config.onGeminiModelResolved,
         jsonMode: knownJsonMode(config, model),
         onJsonModeResolved: (m, enabled) => rememberJsonMode(config, m, enabled),
       });
     }
-    case 'deepl':
-      if (!config.deeplApiKey) throw new Error('DeepL API key is required');
-      return createDeeplEngine(config.deeplApiKey);
-    case 'libretranslate':
-      if (!config.libreTranslateUrl) throw new Error('LibreTranslate URL is required');
-      return createLibreTranslateEngine(config.libreTranslateUrl, config.libreTranslateApiKey);
+    case 'deepl': {
+      const key = config.deeplApiKey?.trim();
+      if (!key) throw new Error('DeepL API key is required');
+      return createDeeplEngine(key);
+    }
+    case 'libretranslate': {
+      const url = config.libreTranslateUrl?.trim();
+      if (!url) throw new Error('LibreTranslate URL is required');
+      return createLibreTranslateEngine(url, config.libreTranslateApiKey?.trim());
+    }
     default:
       throw new Error(`Unknown engine: ${config.engine satisfies never}`);
   }
@@ -81,23 +86,25 @@ export async function preflightEngine(
 ): Promise<{ model?: string }> {
   switch (config.engine) {
     case 'gemini': {
-      if (!config.geminiApiKey) throw new Error('Gemini API key is required');
+      const key = config.geminiApiKey?.trim();
+      if (!key) throw new Error('Gemini API key is required');
       const { model, autoPicked } = await resolveGeminiModel(
-        config.geminiApiKey,
+        key,
         config.geminiModel,
         config.geminiAutoModel,
         signal,
       );
       if (autoPicked) await config.onGeminiModelResolved?.(model);
-      await preflightGemini(config.geminiApiKey, model, signal, {
+      await preflightGemini(key, model, signal, {
         jsonMode: knownJsonMode(config, model),
         onJsonModeResolved: (enabled) => rememberJsonMode(config, model, enabled),
       });
       return { model };
     }
     case 'deepl': {
-      if (!config.deeplApiKey) throw new Error('DeepL API key is required');
-      const endpoint = config.deeplApiKey.endsWith(':fx')
+      const key = config.deeplApiKey?.trim();
+      if (!key) throw new Error('DeepL API key is required');
+      const endpoint = key.endsWith(':fx')
         ? 'https://api-free.deepl.com/v2/translate'
         : 'https://api.deepl.com/v2/translate';
       const body = new URLSearchParams();
@@ -106,7 +113,7 @@ export async function preflightEngine(
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          Authorization: `DeepL-Auth-Key ${config.deeplApiKey}`,
+          Authorization: `DeepL-Auth-Key ${key}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body,
@@ -119,8 +126,9 @@ export async function preflightEngine(
       return {};
     }
     case 'libretranslate': {
-      if (!config.libreTranslateUrl) throw new Error('LibreTranslate URL is required');
-      const root = config.libreTranslateUrl.replace(/\/$/, '');
+      const url = config.libreTranslateUrl?.trim();
+      if (!url) throw new Error('LibreTranslate URL is required');
+      const root = url.replace(/\/$/, '');
       const res = await fetch(`${root}/languages`, { signal });
       if (!res.ok) {
         throw new Error(`LibreTranslate ${res.status}: preflight failed`);

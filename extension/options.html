@@ -72,6 +72,10 @@
           <input id="geminiThrottleMs" type="number" min="0" step="500" value="4000" />
         </label>
         <p class="hint">Default 4000 (~1 request / 4s) to stay under free-tier per-minute limits.</p>
+        <div class="row-actions">
+          <button type="button" id="testEngine">Test engine</button>
+        </div>
+        <p class="hint" id="engineTestResult" role="status"></p>
       </section>
 
       <section>
