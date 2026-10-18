@@ -29,7 +29,7 @@ Load unpacked extension:
 
 1. Open a Studio video: `…/video/<id>/edit` or `…/video/<id>/translations`.
 2. Click the Studio-style pill **Auto Titles & Description**.
-3. Pick a preset (Top 10 is preselected on first install) or tweak the language grid — badges mark languages that already have a localization. Leave **Skip existing** on (or choose **Overwrite**).
+3. Pick a preset (Top 10 is preselected on first install; also Top 20, Top 10/20 RPM estimate, All, Last used) or tweak the language grid — badges mark languages that already have a localization. Leave **Skip existing** on (or choose **Overwrite**).
 4. Click **Translate N languages** → wait for per-language progress → edit the preview table.
 5. Turn off **Dry-run** in the modal only when ready, then **Publish**. Failed languages get a **Retry** on the result screen.
 
@@ -39,7 +39,7 @@ Toolbar popup: connected channels (avatar/title, Add channel / Remove, active se
 
 **Multi-channel:** connect each Google account (or Brand Account) via **Add channel**. In Studio, VeilTranslate detects the video’s `snippet.channelId` and uses that channel’s stored token only — never writes with another channel’s token. If the owning channel is not connected, the modal asks you to connect it.
 
-Keyboard: **Enter** confirms the primary action; **Esc** / **×** / **Minimize** hide the modal (job keeps running). Outside click and scroll do not dismiss it. Re-clicking the Studio pill reopens the same job.
+Keyboard: **Enter** confirms the primary action. While a job is **running**, **Esc** / **×** / **Minimize** hide the modal (job continues in the widget). When a job is **finished** (done / failed / stopped), close ends the session — next open shows a fresh language picker (translation cache is kept). Closing with unpublished preview rows asks for confirm. Outside click and scroll do not dismiss it. Re-clicking the Studio pill reopens a still-active job.
 
 ### Screenshots
 
@@ -78,7 +78,7 @@ OAuth uses a local loopback on `http://127.0.0.1:7890/callback`. Tokens are stor
 | `extension/dev/` | Mock harness + Playwright screenshot capture |
 | `shared/` | Translation engines + text helpers (extension + CLI) |
 | `cli/` | Optional `yt-translate` Node CLI |
-| `languages.json` | Language list + presets (Top 10 / Top 20 / Top 10 RPM estimate) |
+| `languages.json` | Language list + presets (Top 10 / Top 20 / Top 10 RPM / Top 20 RPM estimate) |
 | `SETUP.md` | Google Cloud / API key walkthrough |
 | `docs/screenshots/` | UI PNGs for this README |
 

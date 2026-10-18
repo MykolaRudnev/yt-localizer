@@ -4,6 +4,8 @@ import {
   jobFailed,
   jobPercent,
   jobResults,
+  needsDiscardPreviewConfirm,
+  shouldEndSessionOnClose,
   shouldReopenExistingJob,
   type TranslateJob,
 } from '@shared/job';
@@ -156,6 +158,30 @@ function expandUi(job: TranslateJob) {
   uiExpanded = true;
   removeWidget();
   renderJobModal(job);
+}
+
+/**
+ * Running → minimize (job continues). Finished → clear job session (cache kept)
+ * so the next open shows the language picker. Confirm if unpublished preview rows.
+ * Always reads `currentJob` so progress→done updates are not stale closures.
+ */
+async function closeOrEndJobUi() {
+  const j = currentJob;
+  if (!j || !shouldEndSessionOnClose(j)) {
+    minimizeUi();
+    return;
+  }
+  if (needsDiscardPreviewConfirm(j)) {
+    const ok = confirm(
+      'Close and discard preview? Cached translations are kept for re-use.',
+    );
+    if (!ok) return;
+  }
+  await sendMsg({ type: 'CLEAR_JOB' });
+  currentJob = null;
+  removeWidget();
+  uiExpanded = false;
+  removeModal();
 }
 
 /** Modal closes only via X / Esc / Close — never outside click or scroll. */
@@ -623,6 +649,7 @@ async function openQuickModal() {
         <button type="button" data-preset="top10" class="vt-chip">Top 10</button>
         <button type="button" data-preset="top20" class="vt-chip">Top 20</button>
         <button type="button" data-preset="top10rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
+        <button type="button" data-preset="top20rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 20 RPM (estimate)</button>
         <button type="button" data-preset="all" class="vt-chip">All</button>
         <button type="button" data-preset="last" class="vt-chip">Last used</button>
       </div>
@@ -799,7 +826,9 @@ function buildProgressShell(root: HTMLElement, job: TranslateJob) {
         <h2 id="vt-title">${job.phase === 'running' ? 'Translating…' : 'Translation job'}</h2>
         <div class="vt-head-actions">
           <button type="button" class="vt-linkish" id="vt-new">New translation</button>
-          <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Minimize">×</button>
+          <button type="button" class="vt-icon-btn" id="vt-x" aria-label="${
+            job.phase === 'running' ? 'Minimize' : 'Close'
+          }">×</button>
         </div>
       </div>
       <div class="vt-progress-head">
@@ -828,13 +857,15 @@ function buildProgressShell(root: HTMLElement, job: TranslateJob) {
               ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${failed.length} failed</button>`
               : ''
         }
-        <button type="button" id="vt-minimize">Minimize</button>
+        <button type="button" id="vt-minimize">${
+          job.phase === 'running' ? 'Minimize' : 'Close'
+        }</button>
       </div>
     </div>`;
 
-  bindModalChrome({ root, onClose: minimizeUi });
-  root.querySelector('#vt-x')!.addEventListener('click', minimizeUi);
-  root.querySelector('#vt-minimize')!.addEventListener('click', minimizeUi);
+  bindModalChrome({ root, onClose: () => void closeOrEndJobUi() });
+  root.querySelector('#vt-x')!.addEventListener('click', () => void closeOrEndJobUi());
+  root.querySelector('#vt-minimize')!.addEventListener('click', () => void closeOrEndJobUi());
   root.querySelector('#vt-new')!.addEventListener('click', () => void startNewTranslationFromJob());
   wireJobFooter(root, job);
 }
@@ -902,9 +933,12 @@ function patchProgressDom(root: HTMLElement, job: TranslateJob) {
     }
   }
 
-  if (job.phase !== 'running') {
-    wireJobFooter(root, job);
+  const xBtn = root.querySelector('#vt-x') as HTMLElement | null;
+  if (xBtn) {
+    xBtn.setAttribute('aria-label', job.phase === 'running' ? 'Minimize' : 'Close');
   }
+
+  wireJobFooter(root, job);
 }
 
 function wireJobFooter(root: HTMLElement, job: TranslateJob) {
@@ -919,8 +953,10 @@ function wireJobFooter(root: HTMLElement, job: TranslateJob) {
           ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${failed.length} failed</button>`
           : ''
     }
-    <button type="button" id="vt-minimize">Minimize</button>`;
-  footer.querySelector('#vt-minimize')?.addEventListener('click', minimizeUi);
+    <button type="button" id="vt-minimize">${
+      job.phase === 'running' ? 'Minimize' : 'Close'
+    }</button>`;
+  footer.querySelector('#vt-minimize')?.addEventListener('click', () => void closeOrEndJobUi());
   footer.querySelector('#vt-stop')?.addEventListener('click', () => {
     const btn = footer.querySelector('#vt-stop') as HTMLButtonElement;
     btn.disabled = true;
@@ -982,7 +1018,7 @@ function paintPreview(
           <h2 id="vt-title">Preview translations</h2>
           <div class="vt-head-actions">
             <button type="button" class="vt-linkish" id="vt-new">New translation</button>
-            <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Minimize">×</button>
+            <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
           </div>
         </div>
         <div class="vt-banner vt-banner-dry" style="display:${dryRun ? 'block' : 'none'}">
@@ -1011,7 +1047,7 @@ function paintPreview(
           </table>
         </div>
         <div class="vt-footer sticky">
-          <button type="button" id="vt-minimize">Minimize</button>
+          <button type="button" id="vt-minimize">Close</button>
           ${
             failed.length
               ? `<button type="button" id="vt-retry-failed">Retry ${failed.length} failed</button>`
@@ -1083,14 +1119,14 @@ function paintPreview(
 
     bindModalChrome({
       root,
-      onClose: minimizeUi,
+      onClose: () => void closeOrEndJobUi(),
       onEnter: () => {
         const pub = root.querySelector('#vt-publish') as HTMLButtonElement | null;
         if (pub && !pub.disabled) void onPublish();
       },
     });
-    root.querySelector('#vt-x')!.addEventListener('click', minimizeUi);
-    root.querySelector('#vt-minimize')!.addEventListener('click', minimizeUi);
+    root.querySelector('#vt-x')!.addEventListener('click', () => void closeOrEndJobUi());
+    root.querySelector('#vt-minimize')!.addEventListener('click', () => void closeOrEndJobUi());
     root.querySelector('#vt-new')!.addEventListener('click', () => void startNewTranslationFromJob());
     root.querySelector('#vt-dry-preview')!.addEventListener('change', async (e) => {
       dryRun = (e.target as HTMLInputElement).checked;
@@ -1145,7 +1181,7 @@ function showResultPanel(
     <div class="vt-panel vt-job" role="dialog" aria-modal="true" aria-labelledby="vt-title">
       <div class="vt-panel-head">
         <h2 id="vt-title">Result</h2>
-        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Minimize">×</button>
+        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
       </div>
       ${opts.error ? `<p class="vt-err">${escapeHtml(opts.error)}</p>` : ''}
       ${
@@ -1171,18 +1207,19 @@ function showResultPanel(
             ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
             : ''
         }
-        <button type="button" id="vt-minimize">Minimize</button>
+        <button type="button" id="vt-minimize">Close</button>
         <button type="button" id="vt-done">Done</button>
       </div>
     </div>`;
-  bindModalChrome({ root, onClose: minimizeUi });
-  root.querySelector('#vt-x')!.addEventListener('click', minimizeUi);
-  root.querySelector('#vt-minimize')!.addEventListener('click', minimizeUi);
+  bindModalChrome({ root, onClose: () => void closeOrEndJobUi() });
+  root.querySelector('#vt-x')!.addEventListener('click', () => void closeOrEndJobUi());
+  root.querySelector('#vt-minimize')!.addEventListener('click', () => void closeOrEndJobUi());
   root.querySelector('#vt-done')!.addEventListener('click', async () => {
     await sendMsg({ type: 'CLEAR_JOB' });
     currentJob = null;
     removeWidget();
-    minimizeUi();
+    uiExpanded = false;
+    removeModal();
   });
   root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
     const vid = getVideoId() || currentJob?.videoId;

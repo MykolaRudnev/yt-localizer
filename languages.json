@@ -14,6 +14,13 @@
     "top10rpm": {
       "label": "Top 10 RPM (estimate)",
       "codes": ["en", "de", "ja", "ko", "fr", "nl", "sv", "no", "da", "it"]
+    },
+    "top20rpm": {
+      "label": "Top 20 RPM (estimate)",
+      "codes": [
+        "en", "de", "ja", "ko", "fr", "nl", "sv", "no", "da", "it",
+        "fi", "is", "he", "zh-Hant", "zh-Hans", "pl", "cs", "hu", "el", "pt"
+      ]
     }
   },
   "languages": [

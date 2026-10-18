@@ -194,6 +194,24 @@ export function reduceJob(state: TranslateJob | null, action: JobAction): Transl
   }
 }
 
+export function isJobFinished(job: TranslateJob | null | undefined): boolean {
+  if (!job) return false;
+  return job.phase === 'done' || job.phase === 'failed' || job.phase === 'stopped';
+}
+
+/**
+ * Closing the modal ends a finished session (clear job UI state).
+ * Running jobs keep minimize-to-widget behaviour instead.
+ */
+export function shouldEndSessionOnClose(job: TranslateJob | null | undefined): boolean {
+  return isJobFinished(job);
+}
+
+/** Unpublished OK rows in a finished job — confirm before discarding the preview. */
+export function needsDiscardPreviewConfirm(job: TranslateJob): boolean {
+  return isJobFinished(job) && jobUnpublished(job).length > 0;
+}
+
 /** Reopen modal for this video instead of starting a fresh picker. */
 export function shouldReopenExistingJob(
   job: TranslateJob | null | undefined,

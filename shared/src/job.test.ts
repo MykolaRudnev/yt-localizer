@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   badgeForJob,
+  isJobFinished,
   jobEta,
   jobFailed,
   jobPercent,
   jobResults,
   jobUnpublished,
   markJobPublished,
+  needsDiscardPreviewConfirm,
   reduceJob,
+  shouldEndSessionOnClose,
   shouldReopenExistingJob,
   type TranslateJob,
 } from './job.js';
@@ -135,6 +138,44 @@ describe('shouldReopenExistingJob', () => {
     const job = createJob();
     expect(shouldReopenExistingJob(job, 'vid1')).toBe(true);
     expect(shouldReopenExistingJob(null, 'vid1')).toBe(false);
+  });
+});
+
+describe('session close lifecycle', () => {
+  it('ends session on close only when job is finished (not running)', () => {
+    const running = createJob();
+    expect(isJobFinished(running)).toBe(false);
+    expect(shouldEndSessionOnClose(running)).toBe(false);
+
+    for (const phase of ['done', 'failed', 'stopped'] as const) {
+      const finished = { ...running, phase };
+      expect(isJobFinished(finished)).toBe(true);
+      expect(shouldEndSessionOnClose(finished)).toBe(true);
+    }
+    expect(shouldEndSessionOnClose(null)).toBe(false);
+  });
+
+  it('asks confirm only when finished job has unpublished preview rows', () => {
+    let job = createJob(['es', 'de']);
+    job = reduceJob(job, {
+      type: 'finish',
+      phase: 'done',
+      results: [{ language: 'es', title: 'Hola', description: 'x' }],
+    })!;
+    expect(needsDiscardPreviewConfirm(job)).toBe(true);
+
+    job = markJobPublished(job, ['es']);
+    expect(needsDiscardPreviewConfirm(job)).toBe(false);
+
+    const failedOnly = reduceJob(createJob(['de']), {
+      type: 'finish',
+      phase: 'failed',
+      failed: [{ language: 'de', error: 'boom' }],
+    })!;
+    expect(needsDiscardPreviewConfirm(failedOnly)).toBe(false);
+
+    const running = createJob();
+    expect(needsDiscardPreviewConfirm(running)).toBe(false);
   });
 });
 

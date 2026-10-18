@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   filterLanguagesForTranslate,
   mergeLocalizations,
   TOP10_CODES,
+  TOP10_RPM_CODES,
+  TOP20_RPM_CODES,
 } from './langs.js';
+
+const languagesJson = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../languages.json'), 'utf8'),
+) as {
+  presets: Record<string, { label: string; codes: string[] }>;
+};
 
 describe('filterLanguagesForTranslate', () => {
   const existing = {
@@ -73,5 +84,19 @@ describe('TOP10_CODES', () => {
     expect(TOP10_CODES).toEqual(
       expect.arrayContaining(['es', 'pt', 'hi', 'ar', 'fr', 'de', 'ru', 'ja', 'id', 'ko']),
     );
+  });
+});
+
+describe('RPM presets', () => {
+  it('Top 10 RPM matches languages.json and is length 10', () => {
+    expect(TOP10_RPM_CODES).toHaveLength(10);
+    expect([...TOP10_RPM_CODES]).toEqual(languagesJson.presets.top10rpm.codes);
+  });
+
+  it('Top 20 RPM extends Top 10 and matches languages.json', () => {
+    expect(TOP20_RPM_CODES).toHaveLength(20);
+    expect([...TOP20_RPM_CODES].slice(0, 10)).toEqual([...TOP10_RPM_CODES]);
+    expect([...TOP20_RPM_CODES]).toEqual(languagesJson.presets.top20rpm.codes);
+    expect(languagesJson.presets.top20rpm.label).toMatch(/Top 20 RPM/i);
   });
 });
