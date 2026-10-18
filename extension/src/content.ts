@@ -627,15 +627,22 @@ async function openQuickModal() {
       }
     };
 
+    const engineShown = engineLabel(settings.engine, settings.geminiModel || undefined);
     const panel = root.querySelector('.vt-panel') as HTMLElement;
     panel.innerHTML = `
       <div class="vt-panel-head">
-        <h2 id="vt-title">Auto Titles &amp; Description</h2>
+        <div>
+          <span class="vt-brand-mark">VeilTranslate</span>
+          <h2 id="vt-title">Auto Titles &amp; Description</h2>
+        </div>
         <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
       </div>
-      <div class="vt-meta">
-        ${escapeHtml(meta.title?.slice(0, 90) ?? videoId)}
-        ${meta.defaultLanguage ? ` · default: ${escapeHtml(meta.defaultLanguage)}` : ''}
+      <div class="vt-section vt-video-info" id="vt-video-info">
+        <div class="vt-section-label vt-section-label-inset">Video</div>
+        <div class="vt-video-title">${escapeHtml(meta.title?.slice(0, 90) ?? videoId)}</div>
+        <div class="vt-meta vt-meta-tight">
+          ${meta.defaultLanguage ? `Default language: ${escapeHtml(meta.defaultLanguage)}` : escapeHtml(videoId)}
+        </div>
       </div>
       <div class="vt-banner vt-banner-dry" id="vt-dry-banner" style="display:${dryRun ? 'block' : 'none'}">
         Dry-run ON — preview only; Publish will stay disabled until you turn this off.
@@ -645,16 +652,19 @@ async function openQuickModal() {
       }">
         Auto-publish ON — translations go live as they finish
       </div>
-      <div class="vt-chips" id="vt-presets">
-        <button type="button" data-preset="top10" class="vt-chip">Top 10</button>
-        <button type="button" data-preset="top20" class="vt-chip">Top 20</button>
-        <button type="button" data-preset="top10rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
-        <button type="button" data-preset="top20rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 20 RPM (estimate)</button>
-        <button type="button" data-preset="all" class="vt-chip">All</button>
-        <button type="button" data-preset="last" class="vt-chip">Last used</button>
+      <div class="vt-section">
+        <div class="vt-section-label">Languages</div>
+        <div class="vt-chips" id="vt-presets">
+          <button type="button" data-preset="top10" class="vt-chip">Top 10</button>
+          <button type="button" data-preset="top20" class="vt-chip">Top 20</button>
+          <button type="button" data-preset="top10rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
+          <button type="button" data-preset="top20rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 20 RPM (estimate)</button>
+          <button type="button" data-preset="all" class="vt-chip">All</button>
+          <button type="button" data-preset="last" class="vt-chip">Last used</button>
+        </div>
+        <input type="search" id="vt-lang-search" class="vt-search" placeholder="Search languages…" aria-label="Search languages" />
+        <div class="vt-lang-grid" id="vt-lang-grid"></div>
       </div>
-      <input type="search" id="vt-lang-search" class="vt-search" placeholder="Search languages…" aria-label="Search languages" />
-      <div class="vt-lang-grid" id="vt-lang-grid"></div>
       <div class="vt-picker-footer">
         <span class="vt-count" id="vt-sel-count"></span>
         <div class="vt-mode-row">
@@ -671,6 +681,10 @@ async function openQuickModal() {
         <label class="vt-check"><input type="checkbox" id="vt-auto" ${
           autoPublish ? 'checked' : ''
         }/> Auto-publish</label>
+      </div>
+      <div class="vt-engine-row" id="vt-engine-row">
+        <span class="vt-engine-label">Engine</span>
+        <span class="vt-engine-value">${escapeHtml(engineShown || settings.engine)}</span>
       </div>
       <div class="vt-footer">
         <button type="button" id="vt-cancel">Cancel</button>

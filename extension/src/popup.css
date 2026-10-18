@@ -1,13 +1,33 @@
+/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: custom (Veil)
+ * designed-as-app · design-system: design.md
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+
 :root {
-  --bg: #0f1419;
-  --panel: #1a222c;
-  --text: #e8eef4;
-  --muted: #8b9aab;
-  --accent: #3d9a6a;
-  --border: #2a3542;
-  --warn: #c9a227;
-  --danger: #d97878;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  --color-paper: oklch(15% 0.014 155);
+  --color-paper-2: oklch(19% 0.016 155);
+  --color-paper-3: oklch(23% 0.014 155);
+  --color-ink: oklch(94% 0.010 150);
+  --color-ink-2: oklch(78% 0.018 155);
+  --color-muted: oklch(62% 0.022 160);
+  --color-rule: oklch(32% 0.018 155);
+  --color-accent: oklch(64% 0.100 148);
+  --color-accent-ink: oklch(98% 0.010 150);
+  --color-focus: oklch(72% 0.110 148);
+  --color-warn: oklch(78% 0.110 85);
+  --color-warn-bg: oklch(22% 0.040 85);
+  --color-danger: oklch(68% 0.140 25);
+  --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-body: "Roboto", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-short: 160ms;
 }
 
 * {
@@ -17,47 +37,80 @@
 body {
   margin: 0;
   width: 360px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-paper);
+  color: var(--color-ink);
   line-height: 1.4;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 .popup {
-  padding: 0.9rem 1rem 1.1rem;
+  padding: var(--space-xs) var(--space-sm) var(--space-sm);
 }
 
 header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-xs);
+  gap: var(--space-2xs);
+}
+
+.brand {
+  min-width: 0;
+}
+
+.brand-mark {
+  margin: 0 0 0.15rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
 }
 
 h1 {
   margin: 0;
-  font-size: 1.05rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: -0.02em;
 }
 
 h2 {
-  margin: 0 0 0.45rem;
-  font-size: 0.78rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
   font-weight: 600;
+  font-style: normal;
 }
 
 section {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-panel);
+  padding: var(--space-xs);
   margin-bottom: 0.65rem;
 }
 
 a {
-  color: var(--accent);
+  color: var(--color-accent);
   font-size: 0.85rem;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--color-ink);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .hidden {
@@ -68,15 +121,15 @@ a {
   margin: 0 0 0.65rem;
   padding: 0.55rem 0.7rem;
   font-size: 0.85rem;
-  color: #f0d78c;
-  background: #2a2414;
-  border: 1px solid var(--warn);
-  border-radius: 8px;
+  color: var(--color-warn);
+  background: var(--color-warn-bg);
+  border: 1px solid var(--color-warn);
+  border-radius: var(--radius-control);
 }
 
 .checklist {
-  border-color: var(--warn);
-  background: #2a2414;
+  border-color: var(--color-warn);
+  background: var(--color-warn-bg);
 }
 
 .checklist ul {
@@ -86,17 +139,17 @@ a {
 }
 
 .checklist li.ok {
-  color: var(--accent);
+  color: var(--color-accent);
 }
 
 .checklist li.missing {
-  color: var(--warn);
+  color: var(--color-warn);
 }
 
 .hint {
   margin: 0;
   font-size: 0.78rem;
-  color: var(--muted);
+  color: var(--color-muted);
 }
 
 .channel-list {
@@ -111,14 +164,15 @@ a {
   align-items: center;
   gap: 0.4rem;
   justify-content: space-between;
-  padding: 0.35rem 0.4rem;
-  border-radius: 6px;
+  padding: 0.4rem 0.45rem;
+  border-radius: var(--radius-control);
   border: 1px solid transparent;
+  transition: border-color var(--dur-short) var(--ease-out), background var(--dur-short) var(--ease-out);
 }
 
 .channel-row.active {
-  border-color: var(--accent);
-  background: rgba(61, 154, 106, 0.12);
+  border-color: var(--color-accent);
+  background: color-mix(in oklch, var(--color-accent) 12%, transparent);
 }
 
 .channel-main {
@@ -140,7 +194,7 @@ a {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
-  background: var(--border);
+  background: var(--color-rule);
 }
 
 .avatar.placeholder {
@@ -163,7 +217,7 @@ a {
 
 .channel-email {
   font-size: 0.72rem;
-  color: var(--muted);
+  color: var(--color-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -174,30 +228,61 @@ a {
 }
 
 button {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.4rem 0.7rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  padding: 0.45rem 0.75rem;
   cursor: pointer;
   font: inherit;
   font-size: 0.88rem;
+  transition:
+    border-color var(--dur-short) var(--ease-out),
+    background var(--dur-short) var(--ease-out),
+    filter var(--dur-short) var(--ease-out);
+}
+
+button:hover {
+  border-color: var(--color-muted);
+  background: var(--color-paper-3);
+}
+
+button:active {
+  transform: translateY(1px);
 }
 
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
   font-weight: 600;
+}
+
+button.primary:hover {
+  filter: brightness(1.06);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 button.linkish {
   background: transparent;
   border: none;
-  color: var(--muted);
+  color: var(--color-muted);
   padding: 0;
   text-align: left;
   text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+button.linkish:hover {
+  color: var(--color-ink);
+  background: transparent;
 }
 
 .status {
@@ -214,7 +299,7 @@ button.linkish {
 }
 
 .status dt {
-  color: var(--muted);
+  color: var(--color-muted);
   margin: 0;
 }
 
@@ -230,15 +315,16 @@ button.linkish {
   gap: 0.4rem;
   font-size: 0.88rem;
   cursor: pointer;
+  color: var(--color-ink-2);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--color-muted);
   font-size: 0.8rem;
 }
 
 .job-section {
-  border-color: #3b82f6;
+  border-color: color-mix(in oklch, var(--color-accent) 45%, var(--color-rule));
 }
 
 .job-summary {
@@ -251,36 +337,44 @@ button.linkish {
 }
 
 .job-line code {
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   word-break: break-all;
 }
 
 .job-bar {
   height: 6px;
-  background: var(--bg);
+  background: var(--color-paper);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 0.65rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-rule);
 }
 
 .job-fill {
   height: 100%;
   width: 0;
-  background: #3b82f6;
+  background: var(--color-accent);
   border-radius: 3px;
-  transition: width 0.2s ease;
+  transition: width 0.2s var(--ease-out);
 }
 
 .job-fill[data-phase='done'] {
-  background: var(--accent);
+  background: var(--color-accent);
 }
 
 .job-fill[data-phase='failed'],
 .job-fill[data-phase='stopped'] {
-  background: var(--danger);
+  background: var(--color-danger);
 }
 
 #openStudio {
   width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-fill,
+  button {
+    transition: none;
+  }
 }

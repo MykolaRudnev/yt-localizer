@@ -6,15 +6,16 @@
     <title>VeilTranslate mock harness (dev)</title>
     <style>
       :root {
-        --bg: #0f1419;
-        --panel: #1a222c;
-        --text: #e8eef4;
-        --muted: #8b9aab;
-        --accent: #3d9a6a;
-        --border: #2a3542;
-        --warn: #c9a227;
-        --danger: #d97878;
-        --blue: #3b82f6;
+        /* Hallmark Veil tokens (mock mirror) */
+        --bg: oklch(15% 0.014 155);
+        --panel: oklch(19% 0.016 155);
+        --text: oklch(94% 0.010 150);
+        --muted: oklch(62% 0.022 160);
+        --accent: oklch(64% 0.100 148);
+        --border: oklch(32% 0.018 155);
+        --warn: oklch(78% 0.110 85);
+        --danger: oklch(68% 0.140 25);
+        --font-display: Georgia, "Iowan Old Style", Palatino, serif;
         font-family: "Roboto", "Segoe UI", system-ui, sans-serif;
       }
       * { box-sizing: border-box; }
@@ -71,7 +72,10 @@
         justify-content: space-between;
         padding: 1rem 1.25rem 0.75rem;
       }
-      .vt-panel h2 { margin: 0; font-size: 1.15rem; }
+      .vt-panel h2 {
+        margin: 0; font-size: 1.15rem; font-family: var(--font-display);
+        font-style: normal; letter-spacing: -0.02em;
+      }
       .vt-icon-btn {
         width: 2rem; height: 2rem; border-radius: 6px;
         border: 1px solid var(--border); background: var(--bg); color: var(--text);
@@ -88,8 +92,8 @@
       }
       .vt-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 1.25rem 0.75rem; }
       .vt-chip {
-        border-radius: 999px; border: 1px solid var(--border); background: var(--bg);
-        color: var(--text); padding: 0.35rem 0.75rem; font-size: 0.82rem;
+        border-radius: 6px; border: 1px solid var(--border); background: var(--bg);
+        color: var(--text); padding: 0.4rem 0.7rem; font-size: 0.82rem;
       }
       .vt-search {
         width: calc(100% - 2.5rem); margin: 0 1.25rem 0.65rem; background: var(--bg);
@@ -120,7 +124,7 @@
         border: 1px solid var(--border);
       }
       .vt-progress-fill {
-        height: 100%; width: 14%; background: linear-gradient(90deg, var(--blue), var(--accent));
+        height: 100%; width: 14%; background: var(--accent);
       }
       .vt-progress-list {
         flex: 1; overflow: hidden; margin: 0 1.25rem; border: 1px solid var(--border);
@@ -155,10 +159,10 @@
       .vt-widget-main { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.4rem; }
       .vt-spin {
         display: inline-block; width: 0.85rem; height: 0.85rem;
-        border: 2px solid var(--blue); border-top-color: transparent; border-radius: 50%;
+        border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%;
       }
-      .vt-widget-bar { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
-      .vt-widget-fill { height: 100%; width: 14%; background: var(--blue); }
+      .vt-widget-bar { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid var(--border); }
+      .vt-widget-fill { height: 100%; width: 14%; background: var(--accent); }
 
       /* Popup */
       .popup {
@@ -176,12 +180,13 @@
         padding: 0.75rem; margin-bottom: 0.65rem;
       }
       .popup a { color: var(--accent); font-size: 0.85rem; }
-      .job-section { border-color: var(--blue); }
+      .job-section { border-color: color-mix(in oklch, var(--accent) 45%, var(--border)); }
       .job-bar {
         height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden;
         margin: 0.5rem 0 0.65rem; border: 1px solid var(--border);
       }
-      .job-fill { height: 100%; width: 14%; background: var(--blue); }
+      .job-fill { height: 100%; width: 14%; background: var(--accent); }
+      .popup h1 { font-family: var(--font-display); font-style: normal; }
       .checklist { border-color: var(--warn); background: #2a2414; }
       .checklist ul { margin: 0 0 0.5rem; padding-left: 1.1rem; font-size: 0.85rem; }
       .checklist li.missing { color: var(--warn); }
