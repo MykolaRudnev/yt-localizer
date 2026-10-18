@@ -32,7 +32,7 @@ import type {
   TranslateOptions,
 } from './types.js';
 
-export type LangStatus = 'pending' | 'running' | 'ok' | 'failed';
+export type LangStatus = 'pending' | 'running' | 'ok' | 'failed' | 'needs_review';
 
 export type ProgressCb = (info: {
   language: string;
@@ -50,9 +50,13 @@ export type ProgressCb = (info: {
   engine?: EngineId;
   /** e.g. "DeepL doesn't support hi → Gemini" for per-language fallback. */
   note?: string;
-  /** Present when status is ok (must persist immediately so errors can't wipe results). */
+  /** Present when status is ok / needs_review (must persist immediately). */
   title?: string;
   description?: string;
+  fullTitle?: string;
+  autoTitle?: string;
+  shortened?: boolean;
+  removed?: LocalizationResult['removed'];
   /** True when result came from the translation cache. */
   cached?: boolean;
 }) => void;
@@ -76,6 +80,7 @@ type JobSettings = Pick<
   | 'libreTranslateUrl'
   | 'libreTranslateApiKey'
   | 'titleOver100'
+  | 'protectLastSegment'
   | 'hashtagMode'
   | 'chapterMode'
   | 'protectedTerms'
@@ -513,6 +518,7 @@ export async function translateAllLanguages(
     hashtagMode: settings.hashtagMode,
     chapterMode: settings.chapterMode,
     titleOver100: settings.titleOver100,
+    protectLastSegment: settings.protectLastSegment !== false,
     signal,
   };
 
@@ -551,13 +557,19 @@ export async function translateAllLanguages(
     if (cached) {
       ok.push(cached);
       breaker.recordSuccess();
+      const cacheStatus: LangStatus =
+        cached.shortened && !cached.reviewed ? 'needs_review' : 'ok';
       onProgress?.({
         language,
         index: i,
         total,
-        status: 'ok',
+        status: cacheStatus,
         title: cached.title,
         description: cached.description,
+        fullTitle: cached.fullTitle,
+        autoTitle: cached.autoTitle ?? cached.title,
+        shortened: cached.shortened,
+        removed: cached.removed,
         cached: true,
         note: 'cached',
         model: resolvedModel,
@@ -617,16 +629,27 @@ export async function translateAllLanguages(
           language,
           title: result.title,
           description: result.description,
+          fullTitle: result.fullTitle,
+          autoTitle: result.autoTitle ?? result.title,
+          shortened: result.shortened,
+          removed: result.removed,
+          reviewed: result.reviewed,
         };
         ok.push(loc);
         breaker.recordSuccess();
+        const langStatus: LangStatus =
+          loc.shortened && !loc.reviewed ? 'needs_review' : 'ok';
         onProgress?.({
           language,
           index: i,
           total,
-          status: 'ok',
+          status: langStatus,
           title: loc.title,
           description: loc.description,
+          fullTitle: loc.fullTitle,
+          autoTitle: loc.autoTitle,
+          shortened: loc.shortened,
+          removed: loc.removed,
           model: usedModel ?? resolvedModel,
           engine: slot.engine,
           note,

@@ -1,13 +1,20 @@
-import type { LocalizationResult, TranslateOptions } from './types.js';
+import type { LocalizationResult, TitleRemovalInfo, TranslateOptions } from './types.js';
 
 /** Cap distinct videos retained in the translation cache (LRU). */
 export const CACHE_MAX_VIDEOS = 200;
 
 /** Auto-publish when this many unpublished langs are ready. */
-export const AUTO_PUBLISH_BATCH = 5;
+export const AUTO_PUBLISH_BUCKET = 5;
+export const AUTO_PUBLISH_BATCH = AUTO_PUBLISH_BUCKET;
 
 /** Auto-publish if any unpublished langs wait this long. */
 export const AUTO_PUBLISH_INTERVAL_MS = 30_000;
+
+/**
+ * Cache entry schema version. Bumped when new fields are added.
+ * Old entries without these fields remain readable (defaults applied in cachedToResult).
+ */
+export const CACHE_SCHEMA_VERSION = 2;
 
 export type CacheHashInput = {
   title: string;
@@ -17,6 +24,7 @@ export type CacheHashInput = {
   chapterMode: string;
   titleOver100: string;
   defaultSourceLanguage: string;
+  protectLastSegment?: boolean;
 };
 
 export type CachedTranslation = {
@@ -24,6 +32,13 @@ export type CachedTranslation = {
   sourceHash: string;
   title: string;
   description: string;
+  /** Schema version when written (missing = v1). */
+  v?: number;
+  fullTitle?: string;
+  shortened?: boolean;
+  removed?: TitleRemovalInfo[];
+  /** User cleared the review gate for a shortened title. */
+  reviewed?: boolean;
   published?: boolean;
   touchedAt: number;
 };
@@ -52,6 +67,8 @@ export function hashTranslationSource(input: CacheHashInput): string {
     c: input.chapterMode,
     o: input.titleOver100,
     s: input.defaultSourceLanguage,
+    // v2: protectLastSegment affects fitted titles
+    pl: input.protectLastSegment !== false,
   });
   let h = 5381;
   for (let i = 0; i < payload.length; i++) {
@@ -65,7 +82,7 @@ export function hashFromTranslateOptions(
   description: string,
   options: Pick<
     TranslateOptions,
-    'protectedTerms' | 'hashtagMode' | 'chapterMode' | 'titleOver100'
+    'protectedTerms' | 'hashtagMode' | 'chapterMode' | 'titleOver100' | 'protectLastSegment'
   >,
   defaultSourceLanguage: string,
 ): string {
@@ -77,6 +94,7 @@ export function hashFromTranslateOptions(
     chapterMode: options.chapterMode,
     titleOver100: options.titleOver100,
     defaultSourceLanguage,
+    protectLastSegment: options.protectLastSegment,
   });
 }
 
@@ -101,12 +119,18 @@ export function putCachedTranslation(
   const videos = { ...store.videos };
   const prev = videos[videoId] ?? { touchedAt: now, byLang: {} };
   const byLang = { ...prev.byLang };
+  const prior = byLang[entry.language];
   byLang[entry.language] = {
     language: entry.language,
     sourceHash: entry.sourceHash,
     title: entry.title,
     description: entry.description,
-    published: entry.published ?? byLang[entry.language]?.published,
+    v: entry.v ?? CACHE_SCHEMA_VERSION,
+    fullTitle: entry.fullTitle ?? prior?.fullTitle,
+    shortened: entry.shortened ?? prior?.shortened,
+    removed: entry.removed ?? prior?.removed,
+    reviewed: entry.reviewed ?? prior?.reviewed,
+    published: entry.published ?? prior?.published,
     touchedAt: entry.touchedAt ?? now,
   };
   videos[videoId] = { touchedAt: now, byLang };
@@ -127,6 +151,30 @@ export function markCachedPublished(
       byLang[lang] = { ...byLang[lang], published: true, touchedAt: now };
     }
   }
+  return {
+    videos: {
+      ...store.videos,
+      [videoId]: { touchedAt: now, byLang },
+    },
+  };
+}
+
+export function markCachedReviewed(
+  store: TranslationCacheStore,
+  videoId: string,
+  language: string,
+  title: string,
+  now = Date.now(),
+): TranslationCacheStore {
+  const bucket = store.videos[videoId];
+  if (!bucket?.byLang[language]) return store;
+  const byLang = { ...bucket.byLang };
+  byLang[language] = {
+    ...byLang[language],
+    title,
+    reviewed: true,
+    touchedAt: now,
+  };
   return {
     videos: {
       ...store.videos,
@@ -159,11 +207,19 @@ export function translationCacheStats(store: TranslationCacheStore): {
   return { videos: Object.keys(store.videos).length, entries };
 }
 
+/** Convert cache entry to a localization result. Old (v1) entries stay readable. */
 export function cachedToResult(entry: CachedTranslation): LocalizationResult {
+  const fullTitle = entry.fullTitle ?? entry.title;
+  const shortened = entry.shortened ?? false;
   return {
     language: entry.language,
     title: entry.title,
     description: entry.description,
+    fullTitle,
+    autoTitle: entry.title,
+    shortened,
+    removed: entry.removed,
+    reviewed: entry.reviewed ?? !shortened,
   };
 }
 

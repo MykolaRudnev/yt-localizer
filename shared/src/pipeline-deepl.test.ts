@@ -12,6 +12,7 @@ const baseSettings = {
   libreTranslateUrl: '',
   libreTranslateApiKey: '',
   titleOver100: 'truncate' as const,
+  protectLastSegment: true,
   hashtagMode: 'keep' as const,
   chapterMode: 'translate_labels' as const,
   protectedTerms: [] as string[],

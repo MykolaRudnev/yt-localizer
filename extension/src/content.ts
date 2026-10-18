@@ -2,8 +2,10 @@ import './content.css';
 import {
   jobEta,
   jobFailed,
+  jobNeedsReview,
   jobPercent,
-  jobResults,
+  jobPreviewRows,
+  jobPublishCounts,
   needsDiscardPreviewConfirm,
   shouldEndSessionOnClose,
   shouldReopenExistingJob,
@@ -11,7 +13,7 @@ import {
   type TranslateJob,
 } from '@shared/job';
 import { flagForLanguage } from '@shared/langs';
-import { charWarning } from '@shared/text';
+import { charWarning, titleRemovalDiff, YT_TITLE_MAX } from '@shared/text';
 import type { AppSettings, LocalizationResult } from '@shared/types';
 import languagesData from '../../languages.json';
 import { connectRuntimePort, sendRuntimeMessage } from './messaging';
@@ -406,14 +408,26 @@ function makeDraggable(el: HTMLElement) {
 }
 
 function paintWidget(el: HTMLElement, job: TranslateJob) {
+  const reviewCount = jobNeedsReview(job).length;
   const pct = jobPercent(job);
-  const label = `Translating ${job.doneCount}/${job.totalCount}`;
+  const label =
+    job.phase === 'running'
+      ? `Translating ${job.doneCount}/${job.totalCount}`
+      : reviewCount > 0
+        ? `${reviewCount} need review`
+        : `Done ${job.doneCount}/${job.totalCount}`;
+  const spin =
+    job.phase === 'running'
+      ? `<span class="vt-widget-icon"><span class="vt-spin" aria-hidden="true"></span></span>`
+      : `<span class="vt-widget-icon" aria-hidden="true">!</span>`;
   el.innerHTML = `
     <div class="vt-widget-main">
-      <span class="vt-widget-icon"><span class="vt-spin" aria-hidden="true"></span></span>
+      ${spin}
       <span class="vt-widget-label">${escapeHtml(label)}</span>
     </div>
-    <div class="vt-widget-bar"><div class="vt-widget-fill" style="width:${pct}%"></div></div>`;
+    <div class="vt-widget-bar"><div class="vt-widget-fill" style="width:${
+      job.phase === 'running' ? pct : 100
+    }%"></div></div>`;
 }
 
 /* ---------- connect / picker ---------- */
@@ -797,7 +811,7 @@ function engineLabel(engine?: string, model?: string): string {
 
 function renderJobModal(job: TranslateJob) {
   let root = document.getElementById(MODAL_ID) as HTMLElement | null;
-  const results = jobResults(job);
+  const results = jobPreviewRows(job);
   const failed = jobFailed(job);
   const showPreview = job.phase !== 'running' && results.length > 0;
 
@@ -885,12 +899,14 @@ function langRowHtml(code: string, job: TranslateJob): string {
       ? 'pending'
       : status === 'running'
         ? '…'
-        : status === 'ok'
-          ? s?.published
-            ? 'live'
-            : s?.cached
-              ? 'cached'
-              : 'ok'
+        : status === 'needs_review'
+          ? 'review'
+          : status === 'ok'
+            ? s?.published
+              ? 'live'
+              : s?.cached
+                ? 'cached'
+                : 'ok'
           : status === 'skipped'
             ? 'skip'
             : 'failed';
@@ -981,6 +997,16 @@ function wireJobFooter(root: HTMLElement, job: TranslateJob) {
   });
 }
 
+function diffHtml(fullTitle: string, fittedTitle: string): string {
+  return titleRemovalDiff(fullTitle, fittedTitle)
+    .map((p) =>
+      p.removed
+        ? `<span class="vt-strike">${escapeHtml(p.text)}</span>`
+        : escapeHtml(p.text),
+    )
+    .join('');
+}
+
 function paintPreview(
   root: HTMLElement,
   job: TranslateJob,
@@ -991,20 +1017,63 @@ function paintPreview(
   let autoPublish = job.autoPublish === true;
 
   const paint = () => {
-    const tableRows = rows
+    // Refresh rows from latest job state (after approve/edit)
+    const liveRows = jobPreviewRows(job);
+    const counts = jobPublishCounts(job);
+
+    const tableRows = liveRows
       .map((r, i) => {
-        const w = charWarning(r.title, r.description);
         const st = job.langStates[r.language];
-        const badge = st?.published ? ' · live' : st?.cached ? ' · cached' : '';
-        return `<tr data-i="${i}">
+        const title = st?.title ?? r.title;
+        const fullTitle = st?.fullTitle ?? r.fullTitle ?? title;
+        const shortened = !!(st?.shortened ?? r.shortened);
+        const needsReview = st?.status === 'needs_review';
+        const w = charWarning(title, st?.description ?? r.description);
+        const badge = st?.published
+          ? ' · live'
+          : needsReview
+            ? ' · needs review'
+            : st?.cached
+              ? ' · cached'
+              : '';
+        const removedChars = Math.max(0, fullTitle.length - title.length);
+        const shortenBadge = shortened
+          ? `<span class="vt-shortened-badge">shortened −${removedChars} chars</span>`
+          : '';
+        const expander = shortened
+          ? `<details class="vt-shorten-details">
+              <summary>Show full translation</summary>
+              <div class="vt-full-diff">${diffHtml(fullTitle, st?.autoTitle ?? title)}</div>
+              <div class="vt-review-actions">
+                <button type="button" class="vt-approve" data-lang="${escapeAttr(r.language)}">Approve</button>
+                <button type="button" class="vt-use-full" data-lang="${escapeAttr(r.language)}">Use full</button>
+                <button type="button" class="vt-reset" data-lang="${escapeAttr(r.language)}">Reset</button>
+              </div>
+            </details>`
+          : '';
+        const counterClass =
+          title.length > YT_TITLE_MAX ? 'vt-counter vt-counter-over' : 'vt-counter';
+        return `<tr data-i="${i}" data-lang="${escapeAttr(r.language)}" class="${
+          needsReview ? 'vt-needs-review' : ''
+        }">
           <td>${escapeHtml(r.language)}${escapeHtml(badge)}</td>
           <td>
-            <input class="vt-title" value="${escapeAttr(r.title)}" />
-            <div class="warn vt-title-warn" style="display:${w.titleOver ? 'block' : 'none'}">Title &gt; 100 (${r.title.length})</div>
+            ${shortenBadge}
+            <input class="vt-title" value="${escapeAttr(title)}" maxlength="${
+              // Allow Use full to exceed; maxlength only when not forcing full
+              title.length > YT_TITLE_MAX ? 500 : YT_TITLE_MAX
+            }" />
+            <div class="${counterClass}">${title.length}/${YT_TITLE_MAX}</div>
+            ${expander}
+            <div class="warn vt-title-warn" style="display:${
+              w.titleOver ? 'block' : 'none'
+            }">Title &gt; 100 (${title.length})</div>
           </td>
           <td>
-            <textarea class="vt-desc" rows="4">${escapeHtml(r.description)}</textarea>
-            <div class="warn vt-desc-warn" style="display:${w.descOver ? 'block' : 'none'}">Description &gt; 5000 (${r.description.length})</div>
+            <textarea class="vt-desc" rows="4">${escapeHtml(st?.description ?? r.description)}</textarea>
+            <div class="warn vt-desc-warn" style="display:${
+              w.descOver ? 'block' : 'none'
+            }">Description &gt; 5000 (${(st?.description ?? r.description).length})</div>
           </td>
         </tr>`;
       })
@@ -1019,7 +1088,12 @@ function paintPreview(
         : job.fatalSummary
           ? job.fatalSummary
           : '';
-    const unpublished = rows.filter((r) => !job.langStates[r.language]?.published);
+    const publishLabel =
+      counts.needReview > 0
+        ? `Publish ${counts.ready} ready (${counts.needReview} need review)`
+        : counts.ready > 0
+          ? `Publish ${counts.ready}`
+          : 'Publish';
 
     root.dataset.mode = 'job';
     root.innerHTML = `
@@ -1036,7 +1110,7 @@ function paintPreview(
         <div class="vt-banner vt-banner-live" style="display:${
           autoPublish && !dryRun ? 'block' : 'none'
         }">
-          Auto-publish ON — translations go live as they finish
+          Auto-publish ON — ready rows go live as they finish (shortened titles wait for review)
         </div>
         ${stopNote ? `<div class="vt-banner vt-banner-err">${escapeHtml(stopNote)}</div>` : ''}
         <div class="vt-meta">
@@ -1063,38 +1137,107 @@ function paintPreview(
               : ''
           }
           <button type="button" ${
-            dryRun || !unpublished.length ? 'class="primary"' : ''
+            dryRun || counts.ready === 0 ? 'class="primary"' : ''
           } id="vt-minimize">Close</button>
           <button type="button" class="primary" id="vt-publish" ${
-            dryRun || !unpublished.length ? 'disabled' : ''
-          }>Publish${unpublished.length && unpublished.length < rows.length ? ` ${unpublished.length}` : ''}</button>
+            dryRun || counts.ready === 0 ? 'disabled' : ''
+          }>${escapeHtml(publishLabel)}</button>
         </div>
       </div>`;
 
-    root.querySelectorAll('tr[data-i]').forEach((tr) => {
+    const syncCounter = (tr: Element) => {
+      const titleInput = tr.querySelector('.vt-title') as HTMLInputElement;
+      const counter = tr.querySelector('.vt-counter') as HTMLElement | null;
+      const titleWarn = tr.querySelector('.vt-title-warn') as HTMLElement;
+      const descInput = tr.querySelector('.vt-desc') as HTMLTextAreaElement;
+      const descWarn = tr.querySelector('.vt-desc-warn') as HTMLElement;
+      const len = titleInput.value.length;
+      if (counter) {
+        counter.textContent = `${len}/${YT_TITLE_MAX}`;
+        counter.classList.toggle('vt-counter-over', len > YT_TITLE_MAX);
+      }
+      // Allow paste/use-full over 100 by lifting maxlength
+      titleInput.maxLength = len > YT_TITLE_MAX ? 500 : YT_TITLE_MAX;
+      const w = charWarning(titleInput.value, descInput.value);
+      titleWarn.style.display = w.titleOver ? 'block' : 'none';
+      titleWarn.textContent = `Title > 100 (${len})`;
+      descWarn.style.display = w.descOver ? 'block' : 'none';
+      descWarn.textContent = `Description > 5000 (${descInput.value.length})`;
+    };
+
+    root.querySelectorAll('tr[data-lang]').forEach((tr) => {
       const titleInput = tr.querySelector('.vt-title') as HTMLInputElement;
       const descInput = tr.querySelector('.vt-desc') as HTMLTextAreaElement;
-      const titleWarn = tr.querySelector('.vt-title-warn') as HTMLElement;
-      const descWarn = tr.querySelector('.vt-desc-warn') as HTMLElement;
-      const update = () => {
-        const w = charWarning(titleInput.value, descInput.value);
-        titleWarn.style.display = w.titleOver ? 'block' : 'none';
-        titleWarn.textContent = `Title > 100 (${titleInput.value.length})`;
-        descWarn.style.display = w.descOver ? 'block' : 'none';
-        descWarn.textContent = `Description > 5000 (${descInput.value.length})`;
-      };
-      titleInput.addEventListener('input', update);
-      descInput.addEventListener('input', update);
+      const lang = (tr as HTMLElement).dataset.lang!;
+      titleInput.addEventListener('input', () => {
+        syncCounter(tr);
+        void sendMsg({
+          type: 'REVIEW_LANG',
+          language: lang,
+          action: 'edit',
+          title: titleInput.value,
+        }).then((res) => {
+          if (res && 'job' in res && res.job) {
+            Object.assign(job, res.job);
+            // Soft-update row class without full repaint
+            const st = job.langStates[lang];
+            tr.classList.toggle('vt-needs-review', st?.status === 'needs_review');
+            const pub = root.querySelector('#vt-publish') as HTMLButtonElement;
+            const c = jobPublishCounts(job);
+            pub.disabled = dryRun || c.ready === 0;
+            pub.textContent =
+              c.needReview > 0
+                ? `Publish ${c.ready} ready (${c.needReview} need review)`
+                : c.ready > 0
+                  ? `Publish ${c.ready}`
+                  : 'Publish';
+          }
+        });
+      });
+      descInput.addEventListener('input', () => syncCounter(tr));
+    });
+
+    const reviewAction = async (
+      lang: string,
+      action: 'approve' | 'use_full' | 'reset',
+    ) => {
+      const res = await sendMsg<{ ok: boolean; job?: TranslateJob }>({
+        type: 'REVIEW_LANG',
+        language: lang,
+        action,
+      });
+      if (res?.job) {
+        Object.assign(job, res.job);
+        // Sync title input for use_full / reset before repaint
+        paint();
+      }
+    };
+
+    root.querySelectorAll('.vt-approve').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void reviewAction((btn as HTMLElement).dataset.lang!, 'approve');
+      });
+    });
+    root.querySelectorAll('.vt-use-full').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void reviewAction((btn as HTMLElement).dataset.lang!, 'use_full');
+      });
+    });
+    root.querySelectorAll('.vt-reset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void reviewAction((btn as HTMLElement).dataset.lang!, 'reset');
+      });
     });
 
     const onPublish = async () => {
       if (dryRun) return;
       const localizations: LocalizationResult[] = [];
-      root.querySelectorAll('tr[data-i]').forEach((tr) => {
-        const i = Number((tr as HTMLElement).dataset.i);
-        const lang = rows[i].language;
-        if (job.langStates[lang]?.published) return;
+      root.querySelectorAll('tr[data-lang]').forEach((tr) => {
+        const lang = (tr as HTMLElement).dataset.lang!;
+        const st = job.langStates[lang];
+        if (!st || st.published || st.status !== 'ok') return;
         const title = (tr.querySelector('.vt-title') as HTMLInputElement).value;
+        if (title.length > YT_TITLE_MAX) return;
         const description = (tr.querySelector('.vt-desc') as HTMLTextAreaElement).value;
         localizations.push({ language: lang, title, description });
       });
@@ -1121,7 +1264,7 @@ function paintPreview(
       } catch (err) {
         showResultPanel(root, {
           published: [],
-          failed: rows.map((l) => ({
+          failed: liveRows.map((l) => ({
             language: l.language,
             error: err instanceof Error ? err.message : String(err),
           })),

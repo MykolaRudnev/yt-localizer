@@ -172,6 +172,7 @@ async function main() {
       libreTranslateUrl: secrets.libreTranslateUrl ?? 'http://localhost:5000',
       libreTranslateApiKey: '',
       titleOver100: 'truncate',
+      protectLastSegment: true,
       hashtagMode: 'keep',
       chapterMode: 'translate_labels',
       protectedTerms: [],

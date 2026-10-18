@@ -130,9 +130,13 @@
         <label>
           Title &gt; 100 chars
           <select id="titleOver100">
-            <option value="truncate">Truncate at word boundary</option>
+            <option value="truncate">Segment-aware shorten (local, free)</option>
             <option value="ai_shorten">Ask AI to shorten (LLM engines)</option>
           </select>
+        </label>
+        <label class="row">
+          <input id="protectLastSegment" type="checkbox" checked />
+          Protect last title segment when shortening (e.g. “Focus &amp; Sleep”)
         </label>
         <label>
           Hashtags

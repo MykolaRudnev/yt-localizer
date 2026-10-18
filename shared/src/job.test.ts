@@ -4,7 +4,10 @@ import {
   isJobFinished,
   jobEta,
   jobFailed,
+  jobNeedsReview,
   jobPercent,
+  jobPreviewRows,
+  jobPublishCounts,
   jobResults,
   jobUnpublished,
   markJobPublished,
@@ -75,7 +78,7 @@ describe('reduceJob', () => {
       finishedAt: 5_000,
     })!;
     expect(job.phase).toBe('done');
-    expect(jobResults(job)).toEqual([{ language: 'es', title: 'T', description: 'D' }]);
+    expect(jobResults(job)).toMatchObject([{ language: 'es', title: 'T', description: 'D' }]);
     expect(jobFailed(job)).toEqual([{ language: 'de', error: 'quota' }]);
     expect(job.doneCount).toBe(2);
   });
@@ -106,7 +109,7 @@ describe('reduceJob', () => {
       stopReason: 'fatal',
       fatalSummary: 'API blew up',
     })!;
-    expect(jobResults(job)).toEqual([
+    expect(jobResults(job)).toMatchObject([
       { language: 'es', title: 'Hola', description: 'Mundo' },
       { language: 'de', title: 'Hallo', description: 'Welt' },
     ]);
@@ -191,6 +194,80 @@ describe('session close lifecycle', () => {
     // Session end (CLEAR_JOB → null): widget must stay gone across reload/SPA
     expect(shouldShowJobWidget(null)).toBe(false);
     expect(badgeForJob(null).text).toBe('');
+  });
+});
+
+describe('review gate + publish counts', () => {
+  const longFull =
+    'Dance of the Stone Circle | Dark Fantasy Ambient Soundscape for Deep Concentration | 1.5 Hours | Focus & Sleep';
+
+  function shortenedJob(): TranslateJob {
+    let job = createJob(['es', 'de']);
+    job = reduceJob(job, {
+      type: 'progress',
+      language: 'es',
+      status: 'needs_review',
+      title: longFull.slice(0, 90),
+      description: 'd',
+      fullTitle: longFull,
+      autoTitle: longFull.slice(0, 90),
+      shortened: true,
+    })!;
+    job = reduceJob(job, {
+      type: 'progress',
+      language: 'de',
+      status: 'ok',
+      title: 'Kurz',
+      description: 'd',
+      shortened: false,
+    })!;
+    return reduceJob(job, { type: 'finish', phase: 'done' })!;
+  }
+
+  it('blocks shortened rows until approve or edit', () => {
+    let job = shortenedJob();
+    expect(jobNeedsReview(job).map((r) => r.language)).toEqual(['es']);
+    expect(jobResults(job).map((r) => r.language)).toEqual(['de']);
+    expect(jobUnpublished(job).map((r) => r.language)).toEqual(['de']);
+    expect(jobPublishCounts(job)).toEqual({ ready: 1, needReview: 1 });
+    expect(jobPreviewRows(job)).toHaveLength(2);
+
+    job = reduceJob(job, { type: 'review', language: 'es', action: 'approve' })!;
+    expect(job.langStates.es.status).toBe('ok');
+    expect(jobNeedsReview(job)).toHaveLength(0);
+    expect(jobPublishCounts(job).ready).toBe(2);
+  });
+
+  it('edit unblocks when ≤100; use full stays blocked when over; reset restores auto', () => {
+    let job = shortenedJob();
+    job = reduceJob(job, {
+      type: 'review',
+      language: 'es',
+      action: 'edit',
+      title: 'Short enough title',
+    })!;
+    expect(job.langStates.es.status).toBe('ok');
+    expect(job.langStates.es.title).toBe('Short enough title');
+
+    job = shortenedJob();
+    job = reduceJob(job, { type: 'review', language: 'es', action: 'use_full' })!;
+    expect(job.langStates.es.title).toBe(longFull);
+    expect(job.langStates.es.status).toBe('needs_review');
+
+    job = reduceJob(job, { type: 'review', language: 'es', action: 'reset' })!;
+    expect(job.langStates.es.title).toBe(job.langStates.es.autoTitle);
+    expect(job.langStates.es.status).toBe('needs_review');
+  });
+
+  it('auto-publish skip: jobUnpublished never includes needs_review', () => {
+    const job = shortenedJob();
+    expect(jobUnpublished(job).every((r) => r.language !== 'es')).toBe(true);
+  });
+
+  it('shows widget when finished with pending reviews', () => {
+    const job = shortenedJob();
+    expect(shouldShowJobWidget(job)).toBe(true);
+    expect(needsDiscardPreviewConfirm(job)).toBe(true);
   });
 });
 

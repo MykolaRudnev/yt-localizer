@@ -9,14 +9,32 @@ export interface TranslateOptions {
   hashtagMode: HashtagMode;
   chapterMode: ChapterMode;
   titleOver100: TitleOver100;
+  /** Protect the last title segment when fitting to 100 chars (default true). */
+  protectLastSegment?: boolean;
   /** Abort in-flight engine requests when the job is stopped. */
   signal?: AbortSignal;
+}
+
+/** Info about text removed while fitting a title to the YouTube limit. */
+export interface TitleRemovalInfo {
+  text: string;
+  kind: 'shortened' | 'dropped' | 'truncated';
 }
 
 export interface LocalizationResult {
   language: string;
   title: string;
   description: string;
+  /** Untruncated translation (before segment-aware fit). */
+  fullTitle?: string;
+  /** True when title was shortened from fullTitle. */
+  shortened?: boolean;
+  /** Segments/ranges removed during fit (for review UI). */
+  removed?: TitleRemovalInfo[];
+  /** Auto-fitted title before user edits (for Reset). */
+  autoTitle?: string;
+  /** User approved or edited past the review gate. */
+  reviewed?: boolean;
 }
 
 export interface TranslateRequest {
@@ -92,6 +110,8 @@ export interface AppSettings {
   libreTranslateApiKey: string;
   oauthClientId: string;
   titleOver100: TitleOver100;
+  /** When fitting titles over 100 chars, keep the last segment (default true). */
+  protectLastSegment: boolean;
   hashtagMode: HashtagMode;
   chapterMode: ChapterMode;
   dryRun: boolean;
@@ -147,6 +167,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   libreTranslateApiKey: '',
   oauthClientId: '',
   titleOver100: 'truncate',
+  protectLastSegment: true,
   hashtagMode: 'keep',
   chapterMode: 'translate_labels',
   protectedTerms: [],

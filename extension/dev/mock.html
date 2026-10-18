@@ -177,6 +177,26 @@
         color: var(--text); font: inherit; resize: none;
       }
       table.vt-preview .lang { color: var(--accent); font-weight: 600; width: 3rem; }
+      .vt-shortened-badge {
+        display: inline-block; font-size: 0.68rem; font-weight: 600;
+        color: var(--warn); margin-bottom: 0.2rem;
+      }
+      .vt-counter { font-size: 0.68rem; color: var(--muted); margin-top: 0.15rem; }
+      .vt-needs-review td { background: color-mix(in oklch, var(--warn) 12%, transparent); }
+      .vt-shorten-details { margin-top: 0.35rem; font-size: 0.8rem; }
+      .vt-shorten-details[open] summary { margin-bottom: 0.3rem; color: var(--muted); }
+      .vt-full-diff {
+        padding: 0.4rem; background: var(--panel); border: 1px solid var(--border);
+        border-radius: 4px; line-height: 1.4; margin-bottom: 0.35rem;
+      }
+      .vt-strike {
+        text-decoration: line-through;
+        background: color-mix(in oklch, var(--warn) 35%, transparent);
+        opacity: 0.9;
+      }
+      .vt-review-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+      .vt-review-actions button { font-size: 0.72rem; padding: 0.25rem 0.5rem; }
+      .vt-panel.review-shot { height: auto; min-height: 480px; }
 
       /* Widget */
       #vt-job-widget {
@@ -403,6 +423,59 @@
           <div class="vt-footer">
             <button type="button">Back</button>
             <button type="button" class="primary" disabled>Publish (dry-run)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REVIEW SHORTENED (expanded row with strike-through) -->
+    <div class="shot" id="shot-review-shortened">
+      <div class="vt-frame">
+        <div class="vt-panel preview review-shot" role="dialog" aria-modal="true">
+          <div class="vt-panel-head">
+            <h2>Preview translations</h2>
+            <button type="button" class="vt-icon-btn">×</button>
+          </div>
+          <div class="vt-meta">Dance of the Stone Circle | Dark Fantasy Music for Focus &amp; Sleep · 2 ready · 1 need review</div>
+          <div class="vt-table-wrap">
+            <table class="vt-preview">
+              <thead>
+                <tr><th>Lang</th><th>Title</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr class="vt-needs-review">
+                  <td class="lang">es · needs review</td>
+                  <td>
+                    <span class="vt-shortened-badge">shortened −42 chars</span>
+                    <input value="Danza del Círculo de Piedra | 1,5 horas | Enfoque y sueño" readonly />
+                    <div class="vt-counter">58/100</div>
+                    <details class="vt-shorten-details" open>
+                      <summary>Show full translation</summary>
+                      <div class="vt-full-diff">Danza del Círculo de Piedra | <span class="vt-strike">Música fantasy oscura ambiental para sesiones de concentración profunda</span> | 1,5 horas | Enfoque y sueño</div>
+                      <div class="vt-review-actions">
+                        <button type="button">Approve</button>
+                        <button type="button">Use full</button>
+                        <button type="button">Reset</button>
+                      </div>
+                    </details>
+                  </td>
+                  <td><textarea rows="2" readonly>Sumérgete en ritmos ancestrales y texturas de piedra.</textarea></td>
+                </tr>
+                <tr>
+                  <td class="lang">de</td>
+                  <td>
+                    <input value="Tanz des Steinkreises | 3 Stunden | Fokus &amp; Schlaf" readonly />
+                    <div class="vt-counter">52/100</div>
+                  </td>
+                  <td><textarea rows="2" readonly>Tauche ein in uralte Rhythmen und steinerne Texturen.</textarea></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="vt-footer">
+            <button type="button">New session</button>
+            <button type="button">Close</button>
+            <button type="button" class="primary">Publish 1 ready (1 need review)</button>
           </div>
         </div>
       </div>

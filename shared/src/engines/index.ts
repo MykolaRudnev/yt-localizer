@@ -1,4 +1,11 @@
-import type { EngineConfig, TranslationEngine, TranslateOptions } from '../types.js';
+import type {
+  EngineConfig,
+  LocalizationResult,
+  TitleRemovalInfo,
+  TranslationEngine,
+  TranslateOptions,
+} from '../types.js';
+import { fitTitle, isDurationPhrase, YT_TITLE_MAX } from '../text.js';
 import {
   createGeminiEngine,
   resolveGeminiModel,
@@ -13,6 +20,7 @@ import {
   isEligibleChatModel,
   isJsonModeUnsupportedError,
   generateContent,
+  geminiShortenTitle,
 } from './gemini.js';
 import { createDeeplEngine, deeplSupports } from './deepl.js';
 import { createLibreTranslateEngine } from './libre.js';
@@ -33,6 +41,7 @@ export {
   isEligibleChatModel,
   isJsonModeUnsupportedError,
   generateContent,
+  geminiShortenTitle,
   GEMINI_FALLBACK_MODEL,
 };
 
@@ -140,6 +149,66 @@ export async function preflightEngine(
   }
 }
 
+function protectedTitlePhrases(fullTitle: string, options: TranslateOptions): string[] {
+  const phrases: string[] = [];
+  const protectLast = options.protectLastSegment !== false;
+  // Rough segment split for AI prompt
+  const segs = fullTitle.split(/\s*[|—–·]\s*|\s+-\s+|\s*:\s*/u).map((s) => s.trim()).filter(Boolean);
+  if (segs[0]) phrases.push(segs[0]);
+  for (const seg of segs) {
+    if (isDurationPhrase(seg)) phrases.push(seg);
+  }
+  if (protectLast && segs.length > 1) phrases.push(segs[segs.length - 1]);
+  for (const term of options.protectedTerms) {
+    if (term && fullTitle.toLowerCase().includes(term.toLowerCase())) phrases.push(term);
+  }
+  return [...new Set(phrases)];
+}
+
+function finalizeTitle(
+  fullTitle: string,
+  options: TranslateOptions,
+  preferredFitted?: string,
+): {
+  title: string;
+  fullTitle: string;
+  shortened: boolean;
+  removed: TitleRemovalInfo[];
+  autoTitle: string;
+} {
+  const fitOpts = {
+    protectedTerms: options.protectedTerms,
+    protectLastSegment: options.protectLastSegment,
+    max: YT_TITLE_MAX,
+  };
+  let fitted = preferredFitted
+    ? fitTitle(preferredFitted, fitOpts)
+    : fitTitle(fullTitle, fitOpts);
+  // If AI produced a shorter title, still compare against full translation
+  if (preferredFitted && preferredFitted !== fullTitle) {
+    const safety = fitTitle(preferredFitted, fitOpts);
+    const shortened = safety.title !== fullTitle || fullTitle.length > YT_TITLE_MAX;
+    return {
+      title: safety.title,
+      fullTitle,
+      shortened: shortened || safety.shortened,
+      removed: safety.removed.length
+        ? safety.removed
+        : shortened
+          ? [{ text: '(AI shortened)', kind: 'shortened' as const }]
+          : [],
+      autoTitle: safety.title,
+    };
+  }
+  return {
+    title: fitted.title,
+    fullTitle,
+    shortened: fitted.shortened,
+    removed: fitted.removed,
+    autoTitle: fitted.title,
+  };
+}
+
 /** Translate title+description; fall back to Gemini if DeepL lacks the language. */
 export async function translateTitleDescription(
   title: string,
@@ -149,8 +218,11 @@ export async function translateTitleDescription(
   config: EngineConfig,
   options: TranslateOptions,
   geminiFallbackKey?: string,
-): Promise<{ title: string; description: string }> {
+): Promise<Omit<LocalizationResult, 'language'>> {
   let engine = await createEngine(config);
+  let usedGemini = config.engine === 'gemini';
+  let geminiModel = config.geminiAutoModel || config.geminiModel || GEMINI_FALLBACK_MODEL;
+
   if (config.engine === 'deepl' && !deeplSupports(target)) {
     if (!geminiFallbackKey) {
       throw new Error(`DeepL unsupported language ${target} and no Gemini fallback key`);
@@ -163,12 +235,55 @@ export async function translateTitleDescription(
     );
     if (autoPicked) await config.onGeminiModelResolved?.(model);
     const useModel = model || GEMINI_FALLBACK_MODEL;
+    geminiModel = useModel;
+    usedGemini = true;
     engine = createGeminiEngine(geminiFallbackKey, useModel, {
       onModelResolved: config.onGeminiModelResolved,
       jsonMode: knownJsonMode(config, useModel),
       onJsonModeResolved: (m, enabled) => rememberJsonMode(config, m, enabled),
     });
   }
-  const [t, d] = await engine.translate([title, description], target, source, options);
-  return { title: t, description: d };
+  const [fullTitle, d] = await engine.translate([title, description], target, source, options);
+
+  let preferredFitted: string | undefined;
+  if (
+    options.titleOver100 === 'ai_shorten' &&
+    fullTitle.length > YT_TITLE_MAX &&
+    usedGemini &&
+    (config.geminiApiKey?.trim() || geminiFallbackKey)
+  ) {
+    try {
+      const key = (config.geminiApiKey?.trim() || geminiFallbackKey)!;
+      const { model } = await resolveGeminiModel(
+        key,
+        geminiModel,
+        config.geminiAutoModel,
+        options.signal,
+      );
+      preferredFitted = await geminiShortenTitle(
+        key,
+        model || geminiModel,
+        fullTitle,
+        protectedTitlePhrases(fullTitle, options),
+        options.signal,
+        {
+          jsonMode: knownJsonMode(config, model || geminiModel),
+          onJsonModeResolved: (m, enabled) => rememberJsonMode(config, m, enabled),
+        },
+      );
+    } catch {
+      preferredFitted = undefined;
+    }
+  }
+
+  const fitted = finalizeTitle(fullTitle, options, preferredFitted);
+  return {
+    title: fitted.title,
+    description: d,
+    fullTitle: fitted.fullTitle,
+    shortened: fitted.shortened,
+    removed: fitted.removed,
+    autoTitle: fitted.autoTitle,
+    reviewed: !fitted.shortened,
+  };
 }

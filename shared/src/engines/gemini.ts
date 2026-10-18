@@ -2,11 +2,7 @@ import type { TranslateOptions, TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
 import { isJsonModeUnsupportedError, isModelNotFoundError } from '../errors.js';
 export { isJsonModeUnsupportedError } from '../errors.js';
-import {
-  applyTitleLimit,
-  prepareForTranslation,
-  restoreAfterTranslation,
-} from '../text.js';
+import { prepareForTranslation, restoreAfterTranslation, YT_TITLE_MAX } from '../text.js';
 
 /** Stable alias used when listing models fails. */
 export const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
@@ -308,12 +304,48 @@ function buildPrompt(
     options.chapterMode === 'translate_labels'
       ? 'Translate chapter labels; leave timestamp placeholders untouched.'
       : 'Chapter lines are placeholders — leave them unchanged.',
-    options.titleOver100 === 'ai_shorten'
-      ? 'Title must be at most 100 characters; shorten creatively if needed.'
-      : 'Prefer a natural title; length will be truncated later if needed.',
+    'Prefer a natural full title; length fitting happens afterward (do not truncate mid-phrase).',
     'Preserve line breaks in the description.',
   ];
   return `${rules.join('\n')}\n\nTITLE:\n${title}\n\nDESCRIPTION:\n${description}`;
+}
+
+/** Creative shorten for titles over 100 chars, respecting protected phrases. */
+export async function geminiShortenTitle(
+  apiKey: string,
+  model: string,
+  fullTitle: string,
+  protectedPhrases: string[],
+  signal?: AbortSignal,
+  hooks: GeminiModelHooks = {},
+): Promise<string> {
+  const protectList =
+    protectedPhrases.filter(Boolean).length > 0
+      ? protectedPhrases.filter(Boolean).map((p) => `- ${p}`).join('\n')
+      : '(none)';
+  const prompt = [
+    `Shorten this YouTube title to at most ${YT_TITLE_MAX} characters.`,
+    'Return ONLY valid JSON: {"title":"..."}',
+    'Keep meaning; prefer dropping or compressing the least important middle phrases.',
+    'You MUST keep these protected phrases exactly (character-for-character) if present:',
+    protectList,
+    'Do not invent new brand names. Preserve separators like | — – when useful.',
+    '',
+    `TITLE:\n${fullTitle}`,
+  ].join('\n');
+
+  const raw = await generateContent(apiKey, normalizeGeminiModelId(model), prompt, {
+    signal,
+    jsonMode: hooks.jsonMode,
+    onJsonModeResolved: hooks.onJsonModeResolved
+      ? (enabled) => hooks.onJsonModeResolved!(normalizeGeminiModelId(model), enabled)
+      : undefined,
+  });
+  const parsed = extractJsonObject(raw) as { title?: string };
+  if (typeof parsed.title !== 'string' || !parsed.title.trim()) {
+    throw new Error('Gemini shorten returned invalid JSON shape');
+  }
+  return parsed.title.trim();
 }
 
 export function createGeminiEngine(
@@ -372,9 +404,9 @@ export function createGeminiEngine(
         { label: 'gemini', signal },
       );
 
-      let outTitle = restoreAfterTranslation(result.title, prepared.maps);
-      let outDesc = restoreAfterTranslation(result.description, prepared.maps);
-      outTitle = applyTitleLimit(outTitle, options.titleOver100);
+      const outTitle = restoreAfterTranslation(result.title, prepared.maps);
+      const outDesc = restoreAfterTranslation(result.description, prepared.maps);
+      // Full title kept; segment-aware / AI fit happens in translateTitleDescription.
       return [outTitle, outDesc];
     },
   };

@@ -1,7 +1,14 @@
 import type { LocalizationResult } from './types.js';
+import { YT_TITLE_MAX } from './text.js';
 
 export type JobPhase = 'running' | 'done' | 'failed' | 'stopped';
-export type LangJobStatus = 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
+export type LangJobStatus =
+  | 'pending'
+  | 'running'
+  | 'ok'
+  | 'failed'
+  | 'skipped'
+  | 'needs_review';
 
 export interface LangJobState {
   code: string;
@@ -13,6 +20,12 @@ export interface LangJobState {
   errorDetail?: string;
   title?: string;
   description?: string;
+  /** Untruncated translation. */
+  fullTitle?: string;
+  /** Auto-fitted title (Reset target). */
+  autoTitle?: string;
+  shortened?: boolean;
+  removed?: LocalizationResult['removed'];
   /** Reused from translation cache (no API call). */
   cached?: boolean;
   /** Already written to YouTube (auto-publish or manual). */
@@ -40,7 +53,7 @@ export interface TranslateJob {
   fatalSummary?: string;
   fatalHint?: string;
   stopReason?: string | null;
-  /** Completed (ok + failed + skipped) languages. */
+  /** Completed (ok + failed + skipped + needs_review) languages. */
   doneCount: number;
   totalCount: number;
 }
@@ -72,6 +85,10 @@ export type JobAction =
       errorDetail?: string;
       title?: string;
       description?: string;
+      fullTitle?: string;
+      autoTitle?: string;
+      shortened?: boolean;
+      removed?: LocalizationResult['removed'];
       cached?: boolean;
       published?: boolean;
       fatalSummary?: string;
@@ -88,7 +105,13 @@ export type JobAction =
       fatalHint?: string;
       finishedAt?: number;
     }
-  | { type: 'patch'; patch: Partial<TranslateJob> };
+  | { type: 'patch'; patch: Partial<TranslateJob> }
+  | {
+      type: 'review';
+      language: string;
+      action: 'approve' | 'edit' | 'use_full' | 'reset';
+      title?: string;
+    };
 
 function emptyLang(code: string): LangJobState {
   return { code, status: 'pending' };
@@ -98,9 +121,28 @@ function recount(job: TranslateJob): TranslateJob {
   let done = 0;
   for (const code of job.languages) {
     const s = job.langStates[code]?.status;
-    if (s === 'ok' || s === 'failed' || s === 'skipped') done += 1;
+    if (s === 'ok' || s === 'failed' || s === 'skipped' || s === 'needs_review') done += 1;
   }
   return { ...job, doneCount: done, totalCount: job.languages.length };
+}
+
+function statusForLocalization(r: LocalizationResult): LangJobStatus {
+  if (r.shortened && !r.reviewed) return 'needs_review';
+  return 'ok';
+}
+
+function langFromResult(prev: LangJobState, r: LocalizationResult): LangJobState {
+  const status = statusForLocalization(r);
+  return {
+    ...prev,
+    status,
+    title: r.title,
+    description: r.description,
+    fullTitle: r.fullTitle ?? r.title,
+    autoTitle: r.autoTitle ?? r.title,
+    shortened: r.shortened ?? false,
+    removed: r.removed,
+  };
 }
 
 export function reduceJob(state: TranslateJob | null, action: JobAction): TranslateJob | null {
@@ -148,6 +190,10 @@ export function reduceJob(state: TranslateJob | null, action: JobAction): Transl
           errorDetail: action.errorDetail ?? prev.errorDetail,
           title: action.title ?? prev.title,
           description: action.description ?? prev.description,
+          fullTitle: action.fullTitle ?? prev.fullTitle,
+          autoTitle: action.autoTitle ?? prev.autoTitle,
+          shortened: action.shortened ?? prev.shortened,
+          removed: action.removed ?? prev.removed,
           cached: action.cached ?? prev.cached,
           published: action.published ?? prev.published,
         };
@@ -167,12 +213,20 @@ export function reduceJob(state: TranslateJob | null, action: JobAction): Transl
       };
       for (const r of action.results ?? []) {
         const prev = next.langStates[r.language] ?? emptyLang(r.language);
-        next.langStates[r.language] = {
-          ...prev,
-          status: 'ok',
-          title: r.title,
-          description: r.description,
-        };
+        // Preserve needs_review if already set from progress with shortening metadata
+        if (prev.status === 'needs_review' && prev.title != null) {
+          next.langStates[r.language] = {
+            ...prev,
+            title: r.title ?? prev.title,
+            description: r.description ?? prev.description,
+            fullTitle: r.fullTitle ?? prev.fullTitle,
+            autoTitle: r.autoTitle ?? prev.autoTitle,
+            shortened: r.shortened ?? prev.shortened,
+            removed: r.removed ?? prev.removed,
+          };
+        } else {
+          next.langStates[r.language] = langFromResult(prev, r);
+        }
       }
       for (const f of action.failed ?? []) {
         const prev = next.langStates[f.language] ?? emptyLang(f.language);
@@ -181,6 +235,43 @@ export function reduceJob(state: TranslateJob | null, action: JobAction): Transl
           status: 'failed',
           error: f.error,
           errorDetail: f.errorDetail,
+        };
+      }
+      return recount(next);
+    }
+    case 'review': {
+      if (!state) return null;
+      const prev = state.langStates[action.language];
+      if (!prev) return state;
+      const next: TranslateJob = { ...state, langStates: { ...state.langStates } };
+      const auto = prev.autoTitle ?? prev.title ?? '';
+      const full = prev.fullTitle ?? prev.title ?? '';
+
+      if (action.action === 'approve') {
+        next.langStates[action.language] = {
+          ...prev,
+          title: auto,
+          status: auto.length <= YT_TITLE_MAX ? 'ok' : 'needs_review',
+        };
+      } else if (action.action === 'reset') {
+        next.langStates[action.language] = {
+          ...prev,
+          title: auto,
+          status: prev.shortened ? 'needs_review' : 'ok',
+        };
+      } else if (action.action === 'use_full') {
+        next.langStates[action.language] = {
+          ...prev,
+          title: full,
+          status: full.length <= YT_TITLE_MAX ? 'ok' : 'needs_review',
+        };
+      } else if (action.action === 'edit') {
+        const title = action.title ?? prev.title ?? '';
+        next.langStates[action.language] = {
+          ...prev,
+          title,
+          // Any edit unblocks when ≤100; over 100 stays blocked
+          status: title.length <= YT_TITLE_MAX ? 'ok' : 'needs_review',
         };
       }
       return recount(next);
@@ -208,16 +299,20 @@ export function shouldEndSessionOnClose(job: TranslateJob | null | undefined): b
 }
 
 /**
- * Floating status widget + keep-alive chrome only while a job is still running
- * (minimized unfinished). Finished jobs must not show the pill after session end.
+ * Floating status widget while running, or when finished with pending reviews.
  */
 export function shouldShowJobWidget(job: TranslateJob | null | undefined): boolean {
-  return !!job && job.phase === 'running';
+  if (!job) return false;
+  if (job.phase === 'running') return true;
+  return isJobFinished(job) && jobNeedsReview(job).length > 0;
 }
 
-/** Unpublished OK rows in a finished job — confirm before discarding the preview. */
+/** Unpublished OK rows or pending reviews — confirm before discarding the preview. */
 export function needsDiscardPreviewConfirm(job: TranslateJob): boolean {
-  return isJobFinished(job) && jobUnpublished(job).length > 0;
+  return (
+    isJobFinished(job) &&
+    (jobUnpublished(job).length > 0 || jobNeedsReview(job).length > 0)
+  );
 }
 
 /** Reopen modal for this video instead of starting a fresh picker. */
@@ -234,15 +329,61 @@ export function shouldReopenExistingJob(
   );
 }
 
+function resultFromState(code: string, s: LangJobState): LocalizationResult {
+  return {
+    language: code,
+    title: s.title!,
+    description: s.description ?? '',
+    fullTitle: s.fullTitle,
+    autoTitle: s.autoTitle,
+    shortened: s.shortened,
+    removed: s.removed,
+    reviewed: s.status === 'ok',
+  };
+}
+
+/** Ready-to-publish rows (approved / never shortened). */
 export function jobResults(job: TranslateJob): LocalizationResult[] {
   const out: LocalizationResult[] = [];
   for (const code of job.languages) {
     const s = job.langStates[code];
     if (s?.status === 'ok' && s.title != null) {
-      out.push({ language: code, title: s.title, description: s.description ?? '' });
+      out.push(resultFromState(code, s));
     }
   }
   return out;
+}
+
+/** All preview rows: ready + needs review. */
+export function jobPreviewRows(job: TranslateJob): LocalizationResult[] {
+  const out: LocalizationResult[] = [];
+  for (const code of job.languages) {
+    const s = job.langStates[code];
+    if ((s?.status === 'ok' || s?.status === 'needs_review') && s.title != null) {
+      out.push(resultFromState(code, s));
+    }
+  }
+  return out;
+}
+
+/** Shortened rows still awaiting Approve / edit. */
+export function jobNeedsReview(job: TranslateJob): LocalizationResult[] {
+  const out: LocalizationResult[] = [];
+  for (const code of job.languages) {
+    const s = job.langStates[code];
+    if (s?.status === 'needs_review' && s.title != null) {
+      out.push(resultFromState(code, s));
+    }
+  }
+  return out;
+}
+
+export function jobPublishCounts(job: TranslateJob): { ready: number; needReview: number } {
+  const unpublishedReady = jobResults(job).filter((r) => !job.langStates[r.language]?.published);
+  return {
+    ready: unpublishedReady.length,
+    needReview: jobNeedsReview(job).length,
+  };
 }
 
 export function jobFailed(job: TranslateJob): { language: string; error: string }[] {
@@ -256,7 +397,7 @@ export function jobFailed(job: TranslateJob): { language: string; error: string 
   return out;
 }
 
-/** Successful translations not yet published (for auto-publish flush). */
+/** Successful translations not yet published (excludes needs_review — never auto-published). */
 export function jobUnpublished(job: TranslateJob): LocalizationResult[] {
   return jobResults(job).filter((r) => !job.langStates[r.language]?.published);
 }

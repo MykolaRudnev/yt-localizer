@@ -2,6 +2,7 @@ import {
   cachedToResult,
   hashFromTranslateOptions,
   lookupCachedTranslation,
+  markCachedReviewed,
   shouldAutoPublishFlush,
 } from '@shared/cache';
 import {
@@ -15,6 +16,7 @@ import { preflightEngine } from '@shared/engines/index';
 import {
   badgeForJob,
   jobFailed,
+  jobPreviewRows,
   jobResults,
   jobUnpublished,
   markJobPublished,
@@ -55,6 +57,7 @@ import {
   patchChannelSettings,
   patchSettings,
   saveSettings,
+  saveTranslationCache,
   setActiveChannelId,
   setActiveJob,
   setAutoPublishAcked,
@@ -91,7 +94,13 @@ type Msg =
   | { type: 'GET_TRANSLATION_CACHE_STATS' }
   | { type: 'CLEAR_TRANSLATION_CACHE' }
   | { type: 'GET_AUTO_PUBLISH_ACK' }
-  | { type: 'ACK_AUTO_PUBLISH' };
+  | { type: 'ACK_AUTO_PUBLISH' }
+  | {
+      type: 'REVIEW_LANG';
+      language: string;
+      action: 'approve' | 'edit' | 'use_full' | 'reset';
+      title?: string;
+    };
 
 const KEEP_ALIVE_ALARM = 'vt-keepalive';
 const JOB_PORT = 'vt-job';
@@ -303,6 +312,26 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
     case 'ACK_AUTO_PUBLISH':
       await setAutoPublishAcked(true);
       return { ok: true };
+    case 'REVIEW_LANG': {
+      const cur = memoryJob ?? (await getActiveJob());
+      if (!cur) return { ok: false, error: 'No active job' };
+      const next = reduceJob(cur, {
+        type: 'review',
+        language: message.language,
+        action: message.action,
+        title: message.title,
+      });
+      if (!next) return { ok: false, error: 'Review failed' };
+      await persistJob(next);
+      const st = next.langStates[message.language];
+      if (st?.status === 'ok' && st.title != null) {
+        const store = await getTranslationCache();
+        await saveTranslationCache(
+          markCachedReviewed(store, next.videoId, message.language, st.title),
+        );
+      }
+      return { ok: true, job: next };
+    }
     default:
       return { ok: false, error: 'Unknown message' };
   }
@@ -552,6 +581,7 @@ async function startTranslate(
       hashtagMode: settings.hashtagMode,
       chapterMode: settings.chapterMode,
       titleOver100: settings.titleOver100,
+      protectLastSegment: settings.protectLastSegment,
     },
     settings.defaultSourceLanguage || 'en',
   );
@@ -645,6 +675,10 @@ async function startTranslate(
             stopReason: info.stopReason,
             title: info.title,
             description: info.description,
+            fullTitle: info.fullTitle,
+            autoTitle: info.autoTitle,
+            shortened: info.shortened,
+            removed: info.removed,
             cached: info.cached,
           });
           if (next) await persistJob(next);
@@ -669,11 +703,16 @@ async function startTranslate(
               result.language,
               sourceHash,
             );
+            const needsReview = !!(result.shortened && !result.reviewed);
             await cacheTranslation(videoId, {
               language: result.language,
               sourceHash,
               title: result.title,
               description: result.description,
+              fullTitle: result.fullTitle ?? result.title,
+              shortened: result.shortened,
+              removed: result.removed,
+              reviewed: result.reviewed ?? !result.shortened,
               published: prevHit?.published,
             });
             // Ensure job has text even if progress raced
@@ -682,18 +721,23 @@ async function startTranslate(
               let next = reduceJob(cur, {
                 type: 'progress',
                 language: result.language,
-                status: 'ok',
+                status: needsReview ? 'needs_review' : 'ok',
                 title: result.title,
                 description: result.description,
+                fullTitle: result.fullTitle ?? result.title,
+                autoTitle: result.autoTitle ?? result.title,
+                shortened: result.shortened,
+                removed: result.removed,
                 cached: meta.cached,
                 note: meta.cached ? 'cached' : undefined,
-                published: prevHit?.published === true,
+                published: prevHit?.published === true && !needsReview,
               });
-              if (next && prevHit?.published) {
+              if (next && prevHit?.published && !needsReview) {
                 next = markJobPublished(next, [result.language]);
               }
               if (next) await persistJob(next);
             }
+            // Shortened rows never auto-publish (jobUnpublished excludes needs_review).
             await flushAutoPublish(false);
           },
         },
@@ -708,8 +752,8 @@ async function startTranslate(
       let phase: 'done' | 'failed' | 'stopped' = 'done';
       if (stopReason === 'aborted') phase = 'stopped';
       else if (stopReason === 'fatal' || stopReason === 'circuit') {
-        phase = ok.length || jobResults(memoryJob ?? cur).length ? 'done' : 'failed';
-      } else if (!ok.length && failed.length && !jobResults(memoryJob ?? cur).length) {
+        phase = ok.length || jobPreviewRows(memoryJob ?? cur).length ? 'done' : 'failed';
+      } else if (!ok.length && failed.length && !jobPreviewRows(memoryJob ?? cur).length) {
         phase = 'failed';
       }
 
@@ -717,7 +761,7 @@ async function startTranslate(
       const finished = reduceJob(latest, {
         type: 'finish',
         phase,
-        results: ok.length ? ok : jobResults(latest),
+        results: ok.length ? ok : jobPreviewRows(latest),
         failed,
         stopReason,
         fatalSummary,
@@ -731,7 +775,7 @@ async function startTranslate(
         startedAt: new Date(cur.startedAt).toISOString(),
         finishedAt: new Date().toISOString(),
         dryRun: settings.dryRun,
-        ok: (ok.length ? ok : jobResults(finished!)).map((r) => r.language),
+        ok: (ok.length ? ok : jobPreviewRows(finished!)).map((r) => r.language),
         failed,
       };
       await appendJobLog(entry);

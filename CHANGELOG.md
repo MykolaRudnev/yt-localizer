@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.0] — 2026-10-18
+
+### Features
+
+- **Reviewable segment-aware title shortening** for YouTube’s 100-char limit (suggested by Daniel Lachev): keep `fullTitle`, fit with protected first/duration/last segments + protected terms, badge + strike-through diff, Approve / Use full / Reset
+- Shortened rows stay **needs review** until approve or edit; Publish shows ready vs review counts; auto-publish never ships shortened rows silently
+- Options: **Protect last segment** (default ON); Title > 100 label clarifies local segment-aware vs AI shorten
+
+### Docs
+
+- CONFIGURATION Title > 100 section, README features + review screenshot
+
 ## [1.0.0] — 2026-10-18
 
 First public open-source release.
