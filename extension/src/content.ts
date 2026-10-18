@@ -81,6 +81,56 @@ async function getSettings(): Promise<AppSettings> {
   return res.settings;
 }
 
+async function showConnectChannelModal(
+  opts: { channelId?: string; channelTitle?: string; error?: string },
+  btn: HTMLButtonElement,
+): Promise<void> {
+  removeModal();
+  const root = document.createElement('div');
+  root.id = 'vt-modal-root';
+  const name = opts.channelTitle || opts.channelId || 'this channel';
+  root.innerHTML = `
+    <div class="vt-panel vt-picker">
+      <h2>Connect channel</h2>
+      <div class="vt-banner vt-banner-err">
+        This video belongs to <strong>${escapeHtml(name)}</strong>, connect it.
+      </div>
+      <div class="vt-meta">${escapeHtml(opts.error ?? '')}</div>
+      <div class="vt-actions">
+        <button type="button" id="vt-cancel">Cancel</button>
+        <button type="button" class="primary" id="vt-connect">Connect</button>
+      </div>
+    </div>`;
+  document.documentElement.appendChild(root);
+
+  const close = () => {
+    unbind();
+    removeModal();
+    btn.disabled = false;
+  };
+  let unbind = bindKeys({ onEsc: close });
+
+  root.querySelector('#vt-cancel')!.addEventListener('click', close);
+  root.querySelector('#vt-connect')!.addEventListener('click', async () => {
+    const connectBtn = root.querySelector('#vt-connect') as HTMLButtonElement;
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Connecting…';
+    const res = (await chrome.runtime.sendMessage({
+      type: 'CONNECT_CHANNEL',
+      expectedChannelId: opts.channelId,
+    })) as { ok: boolean; error?: string };
+    if (!res?.ok) {
+      alert(res?.error ?? 'Connect failed');
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+      return;
+    }
+    unbind();
+    removeModal();
+    void openQuickModal();
+  });
+}
+
 async function openQuickModal() {
   const videoId = getVideoId();
   if (!videoId) return;
@@ -114,15 +164,43 @@ async function openQuickModal() {
     })) as {
       ok: boolean;
       error?: string;
+      needsConnect?: boolean;
+      channelId?: string;
+      channelTitle?: string;
       title?: string;
       defaultLanguage?: string;
       existingCodes?: string[];
+      channelSettings?: {
+        selectedLanguages: string[];
+        lastUsedLanguages: string[];
+      };
     };
+
+    if (meta?.needsConnect) {
+      unbind();
+      await showConnectChannelModal(
+        {
+          channelId: meta.channelId,
+          channelTitle: meta.channelTitle,
+          error: meta.error,
+        },
+        btn,
+      );
+      return;
+    }
 
     if (!meta?.ok) throw new Error(meta?.error ?? 'Failed to load video');
 
     const existing = new Set(meta.existingCodes ?? []);
-    const selected = new Set(settings.selectedLanguages);
+    const langSource =
+      meta.channelSettings?.selectedLanguages?.length
+        ? meta.channelSettings.selectedLanguages
+        : settings.selectedLanguages;
+    const lastUsedSource =
+      meta.channelSettings?.lastUsedLanguages?.length
+        ? meta.channelSettings.lastUsedLanguages
+        : settings.lastUsedLanguages;
+    const selected = new Set(langSource);
     let skipExisting = settings.skipExisting;
     let dryRun = settings.dryRun;
     let searchQ = '';
@@ -138,13 +216,15 @@ async function openQuickModal() {
       if (!langs.length) return;
       await chrome.runtime.sendMessage({
         type: 'PATCH_SETTINGS',
-        partial: {
-          selectedLanguages: langs,
-          lastUsedLanguages: langs,
-          skipExisting,
-          dryRun,
-        },
+        partial: { skipExisting, dryRun },
       });
+      if (meta.channelId) {
+        await chrome.runtime.sendMessage({
+          type: 'PATCH_CHANNEL_SETTINGS',
+          channelId: meta.channelId,
+          partial: { selectedLanguages: langs, lastUsedLanguages: langs },
+        });
+      }
       unbind();
       removeModal();
       await runTranslateFlow(videoId, langs, skipExisting, btn);
@@ -263,10 +343,9 @@ async function openQuickModal() {
         selected.clear();
         if (key === 'all') data.languages.forEach((l) => selected.add(l.code));
         else if (key === 'last') {
-          (settings.lastUsedLanguages?.length
-            ? settings.lastUsedLanguages
-            : settings.selectedLanguages
-          ).forEach((c) => selected.add(c));
+          (lastUsedSource?.length ? lastUsedSource : langSource).forEach((c) =>
+            selected.add(c),
+          );
         } else {
           data.presets[key]?.codes.forEach((c) => selected.add(c));
         }

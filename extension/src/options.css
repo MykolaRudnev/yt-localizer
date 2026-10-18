@@ -151,6 +151,16 @@ button.primary {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.subhead {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .actions {
   display: flex;
   align-items: center;

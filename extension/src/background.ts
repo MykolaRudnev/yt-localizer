@@ -1,18 +1,34 @@
+import {
+  mergeSettingsForChannel,
+  orderChannelsForProbe,
+  selectChannelForVideo,
+  tokenMatchesVideoChannel,
+} from '@shared/channels';
 import { filterLanguagesForTranslate } from '@shared/langs';
 import { translateAllLanguages } from '@shared/pipeline';
-import { DEFAULT_SETTINGS, type JobLogEntry, type LocalizationResult } from '@shared/types';
+import {
+  DEFAULT_SETTINGS,
+  type ChannelSettings,
+  type JobLogEntry,
+  type LocalizationResult,
+} from '@shared/types';
 import {
   ensureDefaultLanguage,
   listVideo,
   updateLocalizations,
 } from '@shared/youtube';
-import { getAuthState, getValidAccessToken, launchOAuth, logout } from './oauth';
+import { addChannel, getAuthState, getValidAccessToken, logout } from './oauth';
 import {
   appendJobLog,
+  getActiveChannelId,
+  getChannelSettings,
+  getChannels,
   getGeminiAutoModel,
   getSettings,
+  patchChannelSettings,
   patchSettings,
   saveSettings,
+  setActiveChannelId,
   setGeminiAutoModel,
 } from './storage';
 
@@ -23,9 +39,15 @@ type Msg =
   | { type: 'FETCH_VIDEO_META'; videoId: string }
   | { type: 'GET_SETTINGS' }
   | { type: 'PATCH_SETTINGS'; partial: Partial<typeof DEFAULT_SETTINGS> }
+  | { type: 'GET_CHANNEL_SETTINGS'; channelId: string }
+  | { type: 'PATCH_CHANNEL_SETTINGS'; channelId: string; partial: Partial<ChannelSettings> }
   | { type: 'GET_AUTH_STATE' }
   | { type: 'LOGIN' }
-  | { type: 'LOGOUT' }
+  | { type: 'ADD_CHANNEL' }
+  | { type: 'REMOVE_CHANNEL'; channelId: string }
+  | { type: 'SET_ACTIVE_CHANNEL'; channelId: string }
+  | { type: 'CONNECT_CHANNEL'; expectedChannelId?: string }
+  | { type: 'LOGOUT'; channelId?: string }
   | { type: 'OPEN_OPTIONS' };
 
 /** Active job abort — STOP_TRANSLATE cancels in-flight requests. */
@@ -61,15 +83,55 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       const settings = await patchSettings(message.partial);
       return { ok: true, settings };
     }
+    case 'GET_CHANNEL_SETTINGS':
+      return {
+        ok: true,
+        settings: await getChannelSettings(message.channelId),
+      };
+    case 'PATCH_CHANNEL_SETTINGS': {
+      const settings = await patchChannelSettings(message.channelId, message.partial);
+      // Mirror language selection into global defaults for popup status count.
+      if (message.partial.selectedLanguages || message.partial.lastUsedLanguages) {
+        await patchSettings({
+          selectedLanguages: settings.selectedLanguages,
+          lastUsedLanguages: settings.lastUsedLanguages,
+        });
+      }
+      return { ok: true, settings };
+    }
     case 'GET_AUTH_STATE':
       return { ok: true, ...(await getAuthState()) };
-    case 'LOGIN': {
-      await launchOAuth();
+    case 'LOGIN':
+    case 'ADD_CHANNEL': {
+      const channel = await addChannel();
+      return { ok: true, ...(await getAuthState()), channel };
+    }
+    case 'CONNECT_CHANNEL': {
+      const channel = await addChannel();
+      if (message.expectedChannelId && channel.id !== message.expectedChannelId) {
+        return {
+          ok: false,
+          error: `Connected ${channel.title}, but this video belongs to a different channel. Pick the matching Google/Brand account.`,
+          channel,
+          ...(await getAuthState()),
+        };
+      }
+      return { ok: true, ...(await getAuthState()), channel };
+    }
+    case 'REMOVE_CHANNEL':
+      await logout(message.channelId);
+      return { ok: true, ...(await getAuthState()) };
+    case 'SET_ACTIVE_CHANNEL': {
+      const channels = await getChannels();
+      if (!channels[message.channelId]) {
+        throw new Error('Unknown channel');
+      }
+      await setActiveChannelId(message.channelId);
       return { ok: true, ...(await getAuthState()) };
     }
     case 'LOGOUT':
-      await logout();
-      return { ok: true, loggedIn: false, email: null };
+      await logout(message.channelId);
+      return { ok: true, ...(await getAuthState()) };
     case 'FETCH_VIDEO_META':
       return fetchVideoMeta(message.videoId);
     case 'START_TRANSLATE':
@@ -93,17 +155,118 @@ async function notifyTab(tabId: number | undefined, payload: unknown) {
   }
 }
 
+type ResolvedVideo = {
+  video: Awaited<ReturnType<typeof listVideo>>;
+  channelId: string;
+  token: string;
+};
+
+/**
+ * Probe connected tokens until we find one that owns the video.
+ * Never returns a token whose channelId ≠ video.snippet.channelId.
+ */
+async function resolveVideoAccess(videoId: string): Promise<
+  | { ok: true; resolved: ResolvedVideo }
+  | {
+      ok: false;
+      needsConnect: true;
+      channelId?: string;
+      channelTitle?: string;
+      error: string;
+    }
+> {
+  const channels = await getChannels();
+  const ordered = orderChannelsForProbe(channels, await getActiveChannelId());
+
+  if (!ordered.length) {
+    return {
+      ok: false,
+      needsConnect: true,
+      error: 'No YouTube channels connected. Add one in the VeilTranslate popup.',
+    };
+  }
+
+  let discovered: { channelId: string; channelTitle: string } | null = null;
+
+  for (const ch of ordered) {
+    try {
+      const token = await getValidAccessToken(ch.id);
+      const video = await listVideo(videoId, token);
+      const videoChannelId = video.snippet.channelId;
+      if (!videoChannelId) {
+        throw new Error('Video has no channelId in snippet');
+      }
+      discovered = {
+        channelId: videoChannelId,
+        channelTitle: video.snippet.channelTitle ?? videoChannelId,
+      };
+
+      if (tokenMatchesVideoChannel(ch, videoChannelId)) {
+        return {
+          ok: true,
+          resolved: { video, channelId: videoChannelId, token },
+        };
+      }
+      // Wrong account could still list a public video — keep probing / report connect.
+    } catch {
+      // try next channel
+    }
+  }
+
+  if (discovered) {
+    const match = selectChannelForVideo(channels, discovered.channelId);
+    if (match) {
+      // Token was stale during probe; try once more with matching channel only.
+      const token = await getValidAccessToken(match.id);
+      const video = await listVideo(videoId, token);
+      if (tokenMatchesVideoChannel(match, video.snippet.channelId)) {
+        return {
+          ok: true,
+          resolved: { video, channelId: match.id, token },
+        };
+      }
+    }
+    return {
+      ok: false,
+      needsConnect: true,
+      channelId: discovered.channelId,
+      channelTitle: discovered.channelTitle,
+      error: `This video belongs to ${discovered.channelTitle}, connect it`,
+    };
+  }
+
+  return {
+    ok: false,
+    needsConnect: true,
+    error:
+      'Could not access this video with any connected channel. Connect the channel that owns it.',
+  };
+}
+
 async function fetchVideoMeta(videoId: string) {
-  const token = await getValidAccessToken();
-  const video = await listVideo(videoId, token);
+  const access = await resolveVideoAccess(videoId);
+  if (!access.ok) {
+    return {
+      ok: false,
+      needsConnect: true,
+      channelId: access.channelId,
+      channelTitle: access.channelTitle,
+      error: access.error,
+    };
+  }
+  const { video, channelId } = access.resolved;
+  const channelSettings = await getChannelSettings(channelId);
   return {
     ok: true,
     videoId: video.id,
     title: video.snippet.title,
     description: video.snippet.description,
     defaultLanguage: video.snippet.defaultLanguage,
+    channelId,
+    channelTitle: video.snippet.channelTitle ?? channelId,
     existingLocalizations: video.localizations ?? {},
     existingCodes: Object.keys(video.localizations ?? {}),
+    channelSettings,
   };
 }
 
@@ -113,13 +276,22 @@ async function startTranslate(
   languagesOverride?: string[],
   skipExistingOverride?: boolean,
 ) {
-  // Cancel any previous job
   activeJobAbort?.abort();
   const abort = new AbortController();
   activeJobAbort = abort;
 
   try {
-    const settings = await getSettings();
+    const access = await resolveVideoAccess(videoId);
+    if (!access.ok) {
+      throw new Error(access.error);
+    }
+    const { video: listed, channelId, token } = access.resolved;
+    let video = listed;
+
+    const global = await getSettings();
+    const channelPrefs = await getChannelSettings(channelId);
+    const settings = mergeSettingsForChannel(global, channelPrefs);
+
     const selected =
       languagesOverride?.length ? languagesOverride : settings.selectedLanguages;
 
@@ -133,13 +305,10 @@ async function startTranslate(
       throw new Error('DeepL API key missing. Open Options to add it.');
     }
 
-    await patchSettings({
+    await patchChannelSettings(channelId, {
       selectedLanguages: selected,
       lastUsedLanguages: selected,
     });
-
-    const token = await getValidAccessToken();
-    let video = await listVideo(videoId, token);
 
     if (!video.snippet.defaultLanguage) {
       if (settings.dryRun) {
@@ -163,6 +332,10 @@ async function startTranslate(
       }
     }
 
+    if (video.snippet.channelId !== channelId) {
+      throw new Error('Refusing to translate: token channel does not match video channel.');
+    }
+
     const skipExisting = skipExistingOverride ?? settings.skipExisting;
     const langs = filterLanguagesForTranslate(selected, video.localizations, {
       skipExisting,
@@ -173,6 +346,7 @@ async function startTranslate(
       return {
         ok: true,
         dryRun: settings.dryRun,
+        channelId,
         source: {
           title: video.snippet.title,
           description: video.snippet.description,
@@ -227,6 +401,7 @@ async function startTranslate(
     return {
       ok: true,
       dryRun: settings.dryRun,
+      channelId,
       source: { title, description, defaultLanguage: video.snippet.defaultLanguage },
       existingLocalizations: video.localizations ?? {},
       results: ok,
@@ -249,16 +424,29 @@ async function publish(videoId: string, localizations: LocalizationResult[]) {
     );
   }
 
-  const token = await getValidAccessToken();
-  let video = await listVideo(videoId, token);
+  const access = await resolveVideoAccess(videoId);
+  if (!access.ok) throw new Error(access.error);
+
+  const { channelId, token } = access.resolved;
+  const channelPrefs = await getChannelSettings(channelId);
+  const merged = mergeSettingsForChannel(settings, channelPrefs);
+
+  let video = access.resolved.video;
+  if (video.snippet.channelId !== channelId) {
+    throw new Error('Refusing to publish: token channel does not match video channel.');
+  }
+
   if (!video.snippet.defaultLanguage) {
     video = await ensureDefaultLanguage(
       video,
       token,
-      settings.defaultSourceLanguage || 'en',
+      merged.defaultSourceLanguage || 'en',
     );
   }
   const fresh = await listVideo(videoId, token);
+  if (fresh.snippet.channelId !== channelId) {
+    throw new Error('Refusing to publish: video channel no longer matches connected token.');
+  }
 
   const map: Record<string, { title: string; description: string }> = {};
   for (const loc of localizations) {

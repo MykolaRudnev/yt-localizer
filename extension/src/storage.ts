@@ -1,11 +1,23 @@
-import { DEFAULT_SETTINGS, type AppSettings, type JobLogEntry } from '@shared/types';
+import {
+  DEFAULT_SETTINGS,
+  type AppSettings,
+  type ChannelSettings,
+  type ConnectedChannel,
+  type JobLogEntry,
+} from '@shared/types';
+import { seedChannelSettings } from '@shared/channels';
 
 const SETTINGS_KEY = 'settings';
 const JOBS_KEY = 'jobLogs';
-const TOKEN_KEY = 'accessToken';
-const TOKEN_EXP_KEY = 'accessTokenExpiresAt';
-const ACCOUNT_KEY = 'accountEmail';
+const CHANNELS_KEY = 'channels';
+const ACTIVE_CHANNEL_KEY = 'activeChannelId';
+const CHANNEL_SETTINGS_KEY = 'channelSettings';
 const GEMINI_AUTO_MODEL_KEY = 'geminiAutoModel';
+
+/** Legacy single-account keys — cleared on multi-channel write. */
+const LEGACY_TOKEN_KEY = 'accessToken';
+const LEGACY_TOKEN_EXP_KEY = 'accessTokenExpiresAt';
+const LEGACY_ACCOUNT_KEY = 'accountEmail';
 
 export async function getSettings(): Promise<AppSettings> {
   const data = await chrome.storage.local.get(SETTINGS_KEY);
@@ -23,33 +35,109 @@ export async function patchSettings(partial: Partial<AppSettings>): Promise<AppS
   return next;
 }
 
-export async function getAccessToken(): Promise<string | null> {
-  const data = await chrome.storage.local.get([TOKEN_KEY, TOKEN_EXP_KEY]);
-  const token = data[TOKEN_KEY] as string | undefined;
-  const exp = data[TOKEN_EXP_KEY] as number | undefined;
-  if (!token) return null;
-  if (exp && Date.now() > exp - 60_000) return null;
-  return token;
+export async function getChannels(): Promise<Record<string, ConnectedChannel>> {
+  const data = await chrome.storage.local.get(CHANNELS_KEY);
+  return (data[CHANNELS_KEY] as Record<string, ConnectedChannel> | undefined) ?? {};
 }
 
-export async function setAccessToken(token: string, expiresInSec: number): Promise<void> {
+export async function getChannel(channelId: string): Promise<ConnectedChannel | null> {
+  const channels = await getChannels();
+  return channels[channelId] ?? null;
+}
+
+export async function upsertChannel(channel: ConnectedChannel): Promise<void> {
+  const channels = await getChannels();
+  channels[channel.id] = channel;
+  await chrome.storage.local.set({ [CHANNELS_KEY]: channels });
+  await chrome.storage.local.remove([
+    LEGACY_TOKEN_KEY,
+    LEGACY_TOKEN_EXP_KEY,
+    LEGACY_ACCOUNT_KEY,
+  ]);
+  const active = await getActiveChannelId();
+  if (!active) await setActiveChannelId(channel.id);
+}
+
+export async function removeChannel(channelId: string): Promise<void> {
+  const channels = await getChannels();
+  delete channels[channelId];
+  const settingsMap = await getAllChannelSettings();
+  delete settingsMap[channelId];
+  const active = await getActiveChannelId();
+  const nextActive =
+    active === channelId
+      ? (Object.keys(channels)[0] ?? null)
+      : active && channels[active]
+        ? active
+        : (Object.keys(channels)[0] ?? null);
   await chrome.storage.local.set({
-    [TOKEN_KEY]: token,
-    [TOKEN_EXP_KEY]: Date.now() + expiresInSec * 1000,
+    [CHANNELS_KEY]: channels,
+    [CHANNEL_SETTINGS_KEY]: settingsMap,
+    [ACTIVE_CHANNEL_KEY]: nextActive,
   });
 }
 
-export async function clearAccessToken(): Promise<void> {
-  await chrome.storage.local.remove([TOKEN_KEY, TOKEN_EXP_KEY, ACCOUNT_KEY]);
+export async function getActiveChannelId(): Promise<string | null> {
+  const data = await chrome.storage.local.get(ACTIVE_CHANNEL_KEY);
+  return (data[ACTIVE_CHANNEL_KEY] as string | null | undefined) ?? null;
 }
 
-export async function getAccountEmail(): Promise<string | null> {
-  const data = await chrome.storage.local.get(ACCOUNT_KEY);
-  return (data[ACCOUNT_KEY] as string | undefined) ?? null;
+export async function setActiveChannelId(channelId: string | null): Promise<void> {
+  await chrome.storage.local.set({ [ACTIVE_CHANNEL_KEY]: channelId });
 }
 
-export async function setAccountEmail(email: string): Promise<void> {
-  await chrome.storage.local.set({ [ACCOUNT_KEY]: email });
+export async function getAllChannelSettings(): Promise<Record<string, ChannelSettings>> {
+  const data = await chrome.storage.local.get(CHANNEL_SETTINGS_KEY);
+  return (data[CHANNEL_SETTINGS_KEY] as Record<string, ChannelSettings> | undefined) ?? {};
+}
+
+export async function getChannelSettings(channelId: string): Promise<ChannelSettings> {
+  const map = await getAllChannelSettings();
+  if (map[channelId]) return map[channelId];
+  const channel = await getChannel(channelId);
+  const global = await getSettings();
+  return seedChannelSettings(channel?.title ?? '', {
+    selectedLanguages: global.selectedLanguages,
+    lastUsedLanguages: global.lastUsedLanguages,
+    protectedTerms: global.protectedTerms,
+    defaultSourceLanguage: global.defaultSourceLanguage,
+  });
+}
+
+export async function saveChannelSettings(
+  channelId: string,
+  settings: ChannelSettings,
+): Promise<void> {
+  const map = await getAllChannelSettings();
+  map[channelId] = settings;
+  await chrome.storage.local.set({ [CHANNEL_SETTINGS_KEY]: map });
+}
+
+export async function patchChannelSettings(
+  channelId: string,
+  partial: Partial<ChannelSettings>,
+): Promise<ChannelSettings> {
+  const current = await getChannelSettings(channelId);
+  const next = { ...current, ...partial };
+  await saveChannelSettings(channelId, next);
+  return next;
+}
+
+export async function ensureChannelSettingsSeeded(
+  channelId: string,
+  channelTitle: string,
+): Promise<ChannelSettings> {
+  const map = await getAllChannelSettings();
+  if (map[channelId]) return map[channelId];
+  const global = await getSettings();
+  const seeded = seedChannelSettings(channelTitle, {
+    selectedLanguages: global.selectedLanguages,
+    lastUsedLanguages: global.lastUsedLanguages,
+    protectedTerms: global.protectedTerms,
+    defaultSourceLanguage: global.defaultSourceLanguage,
+  });
+  await saveChannelSettings(channelId, seeded);
+  return seeded;
 }
 
 export async function appendJobLog(entry: JobLogEntry): Promise<void> {

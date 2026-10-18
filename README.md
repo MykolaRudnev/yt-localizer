@@ -35,7 +35,9 @@ Load unpacked extension:
 
 Dry-run defaults **ON** on first install. Never publishes without an explicit **Publish** click. Localizations are always **merged** (other languages are never deleted).
 
-Toolbar popup: login state, engine/key status, dry-run toggle, selection count, Options link, and a setup checklist linking to [SETUP.md](./SETUP.md) (§3 OAuth, §4 Gemini).
+Toolbar popup: connected channels (avatar/title, Add channel / Remove, active selector), engine/key status, dry-run toggle, selection count, Options link, and a setup checklist linking to [SETUP.md](./SETUP.md) (§3 OAuth, §4 Gemini).
+
+**Multi-channel:** connect each Google account (or Brand Account) via **Add channel**. In Studio, VeilTranslate detects the video’s `snippet.channelId` and uses that channel’s stored token only — never writes with another channel’s token. If the owning channel is not connected, the modal asks you to connect it.
 
 Keyboard: **Enter** confirms the primary action, **Esc** closes the modal.
 
