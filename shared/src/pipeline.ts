@@ -25,6 +25,8 @@ export type ProgressCb = (info: {
   stopReason?: JobStopReason;
   fatalSummary?: string;
   fatalHint?: string;
+  /** Resolved Gemini model id (shown in progress). */
+  model?: string;
 }) => void;
 
 export type TranslateJobResult = {
@@ -46,18 +48,28 @@ function buildEngineConfig(
     | 'deeplApiKey'
     | 'libreTranslateUrl'
     | 'libreTranslateApiKey'
-  > & { geminiAutoModel?: string },
-  onGeminiModelResolved?: (model: string) => void | Promise<void>,
+  > & {
+    geminiAutoModel?: string;
+    geminiJsonModeByModel?: Record<string, boolean>;
+  },
+  hooks?: {
+    onGeminiModelResolved?: (model: string) => void | Promise<void>;
+    onGeminiJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
+  },
 ): EngineConfig {
   return {
     engine: settings.engine,
     geminiApiKey: settings.geminiApiKey,
     geminiModel: settings.geminiModel,
     geminiAutoModel: settings.geminiAutoModel,
+    geminiJsonModeByModel: settings.geminiJsonModeByModel
+      ? { ...settings.geminiJsonModeByModel }
+      : undefined,
     deeplApiKey: settings.deeplApiKey,
     libreTranslateUrl: settings.libreTranslateUrl,
     libreTranslateApiKey: settings.libreTranslateApiKey,
-    onGeminiModelResolved,
+    onGeminiModelResolved: hooks?.onGeminiModelResolved,
+    onGeminiJsonModeResolved: hooks?.onGeminiJsonModeResolved,
   };
 }
 
@@ -78,21 +90,32 @@ export async function translateAllLanguages(
     | 'chapterMode'
     | 'protectedTerms'
     | 'defaultSourceLanguage'
-  > & { geminiAutoModel?: string },
+  > & {
+    geminiAutoModel?: string;
+    geminiJsonModeByModel?: Record<string, boolean>;
+  },
   onProgress?: ProgressCb,
   opts?: {
     signal?: AbortSignal;
     /** When set, aborted on fatal/circuit so in-flight fetches die. */
     abort?: AbortController;
     onGeminiModelResolved?: (model: string) => void | Promise<void>;
+    onGeminiJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
     /** Skip preflight (tests). Default runs preflight. */
     skipPreflight?: boolean;
   },
 ): Promise<TranslateJobResult> {
   const signal = opts?.signal ?? opts?.abort?.signal;
-  const config = buildEngineConfig(settings, async (model) => {
-    config.geminiAutoModel = model;
-    await opts?.onGeminiModelResolved?.(model);
+  const config = buildEngineConfig(settings, {
+    onGeminiModelResolved: async (model) => {
+      config.geminiAutoModel = model;
+      await opts?.onGeminiModelResolved?.(model);
+    },
+    onGeminiJsonModeResolved: async (model, jsonMode) => {
+      if (!config.geminiJsonModeByModel) config.geminiJsonModeByModel = {};
+      config.geminiJsonModeByModel[model] = jsonMode;
+      await opts?.onGeminiJsonModeResolved?.(model, jsonMode);
+    },
   });
 
   const abortJob = () => {
@@ -103,9 +126,26 @@ export async function translateAllLanguages(
     }
   };
 
+  let resolvedModel: string | undefined =
+    settings.engine === 'gemini'
+      ? settings.geminiModel?.trim() && settings.geminiModel.trim().toLowerCase() !== 'auto'
+        ? settings.geminiModel.trim()
+        : settings.geminiAutoModel
+      : undefined;
+
   if (!opts?.skipPreflight) {
     try {
-      await preflightEngine(config, signal);
+      const pre = await preflightEngine(config, signal);
+      if (pre.model) {
+        resolvedModel = pre.model;
+        onProgress?.({
+          language: '',
+          index: 0,
+          total: languages.length,
+          status: 'running',
+          model: pre.model,
+        });
+      }
     } catch (err) {
       if (isAbortError(err)) {
         return {
@@ -127,6 +167,7 @@ export async function translateAllLanguages(
         stopReason: 'fatal',
         fatalSummary: face.summary,
         fatalHint: face.hint,
+        model: resolvedModel,
       });
       return {
         ok: [],
@@ -137,6 +178,14 @@ export async function translateAllLanguages(
         pending: [...languages],
       };
     }
+  } else if (resolvedModel) {
+    onProgress?.({
+      language: '',
+      index: 0,
+      total: languages.length,
+      status: 'running',
+      model: resolvedModel,
+    });
   }
 
   const options: TranslateOptions = {
@@ -165,7 +214,7 @@ export async function translateAllLanguages(
     }
 
     const language = languages[i];
-    onProgress?.({ language, index: i, total, status: 'running' });
+    onProgress?.({ language, index: i, total, status: 'running', model: resolvedModel });
     try {
       const result = await translateTitleDescription(
         title,
@@ -176,9 +225,10 @@ export async function translateAllLanguages(
         options,
         settings.geminiApiKey,
       );
+      if (config.geminiAutoModel) resolvedModel = config.geminiAutoModel;
       ok.push({ language, title: result.title, description: result.description });
       breaker.recordSuccess();
-      onProgress?.({ language, index: i, total, status: 'ok' });
+      onProgress?.({ language, index: i, total, status: 'ok', model: resolvedModel });
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) {
         stopReason = 'aborted';
@@ -197,6 +247,7 @@ export async function translateAllLanguages(
         status: 'failed',
         error: face.summary,
         errorDetail: detail,
+        model: resolvedModel,
       });
 
       if (kind === 'fatal') {

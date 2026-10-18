@@ -39,6 +39,17 @@ describe('classifyError', () => {
     expect(classifyError(new Error('Failed to fetch'))).toBe('transient');
     expect(classifyError(new Error('network error ECONNRESET'))).toBe('transient');
   });
+
+  it('marks JSON-mode / responseMimeType 400 as transient (recoverable)', () => {
+    expect(
+      classifyError(
+        new Error('Gemini 400: JSON mode is not enabled for this model INVALID_ARGUMENT'),
+      ),
+    ).toBe('transient');
+    expect(
+      classifyError(new Error('Gemini 400: responseMimeType is not supported')),
+    ).toBe('transient');
+  });
 });
 
 describe('isModelNotFoundError / extractHttpStatus', () => {

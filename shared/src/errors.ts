@@ -29,9 +29,17 @@ export function isModelNotFoundError(err: unknown): boolean {
   return /model.*(not found|no longer available)|NOT_FOUND.*model/i.test(msg);
 }
 
+/** 400 JSON mode / responseMimeType unsupported — recoverable via plain-text fallback. */
+export function isJsonModeUnsupportedError(err: unknown): boolean {
+  const status = extractHttpStatus(err);
+  if (status !== undefined && status !== 400) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /JSON mode|responseMimeType|responseSchema/i.test(msg);
+}
+
 /**
  * FATAL: invalid key, auth, model missing, daily quota exhausted.
- * TRANSIENT: rate limit 429, 5xx, network — safe to retry with backoff.
+ * TRANSIENT: rate limit 429, 5xx, network, JSON-mode-unsupported — safe to retry/fallback.
  */
 export function classifyError(err: unknown): ErrorKind {
   if (isAbortError(err)) return 'fatal';
@@ -40,11 +48,11 @@ export function classifyError(err: unknown): ErrorKind {
   const status = extractHttpStatus(err);
 
   if (status === 401 || status === 403) return 'fatal';
+  // Before API-key checks: INVALID_ARGUMENT in JSON-mode errors must stay recoverable
+  if (isJsonModeUnsupportedError(err)) return 'transient';
   if (
     status === 400 &&
-    /invalid|API_KEY_INVALID|api.?key.*(?:invalid|not valid)|(?:invalid|not valid).*api.?key/i.test(
-      msg,
-    )
+    /API_KEY_INVALID|api.?key.*(?:invalid|not valid)|(?:invalid|not valid).*api.?key/i.test(msg)
   ) {
     return 'fatal';
   }
