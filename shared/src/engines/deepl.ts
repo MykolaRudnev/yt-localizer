@@ -1,10 +1,6 @@
 import type { TranslateOptions, TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
-import {
-  applyTitleLimit,
-  prepareForTranslation,
-  restoreAfterTranslation,
-} from '../text.js';
+import { prepareForTranslation, restoreAfterTranslation } from '../text.js';
 
 /** DeepL Free supported language codes (subset). */
 const DEEPL_LANGS = new Set([
@@ -68,9 +64,9 @@ export function createDeeplEngine(apiKey: string): TranslationEngine {
         return data.translations.map((t) => t.text);
       }, { label: 'deepl', signal: options.signal });
 
-      let outTitle = restoreAfterTranslation(translated[0], prepared.maps);
-      let outDesc = restoreAfterTranslation(translated[1], prepared.maps);
-      outTitle = applyTitleLimit(outTitle, options.titleOver100);
+      const outTitle = restoreAfterTranslation(translated[0], prepared.maps);
+      const outDesc = restoreAfterTranslation(translated[1], prepared.maps);
+      // Full title kept; segment-aware fit happens in translateTitleDescription.
       return [outTitle, outDesc];
     },
   };

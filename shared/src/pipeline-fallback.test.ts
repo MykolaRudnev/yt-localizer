@@ -14,6 +14,7 @@ const baseSettings = {
   libreTranslateUrl: '',
   libreTranslateApiKey: '',
   titleOver100: 'truncate' as const,
+  protectLastSegment: true,
   hashtagMode: 'keep' as const,
   chapterMode: 'translate_labels' as const,
   protectedTerms: [] as string[],
@@ -325,7 +326,7 @@ describe('translateAllLanguages quota fallback', () => {
       },
     );
 
-    expect(result.ok).toEqual([
+    expect(result.ok).toMatchObject([
       { language: 'es', title: 'Cached', description: 'From cache' },
       { language: 'de', title: 'live', description: 'live' },
     ]);

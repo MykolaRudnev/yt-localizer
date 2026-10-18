@@ -758,6 +758,69 @@ html:not([dark]):not([darker-dark-theme]) #vt-modal-root {
   font-size: 0.75rem;
 }
 
+#vt-modal-root .vt-shortened-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--vt-warn);
+  margin-bottom: 0.25rem;
+}
+
+#vt-modal-root .vt-counter {
+  font-size: 0.6875rem;
+  color: var(--vt-muted);
+  margin-top: 0.2rem;
+}
+
+#vt-modal-root .vt-counter-over {
+  color: var(--vt-danger, #c0392b);
+  font-weight: 600;
+}
+
+#vt-modal-root tr.vt-needs-review td {
+  background: color-mix(in srgb, var(--vt-warn) 8%, transparent);
+}
+
+#vt-modal-root .vt-shorten-details {
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+}
+
+#vt-modal-root .vt-shorten-details summary {
+  cursor: pointer;
+  color: var(--vt-muted);
+  user-select: none;
+}
+
+#vt-modal-root .vt-full-diff {
+  margin-top: 0.35rem;
+  padding: 0.4rem;
+  background: var(--vt-paper);
+  border: 1px solid var(--vt-rule);
+  border-radius: 4px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+#vt-modal-root .vt-strike {
+  text-decoration: line-through;
+  background: color-mix(in srgb, var(--vt-warn) 28%, transparent);
+  opacity: 0.85;
+}
+
+#vt-modal-root .vt-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+#vt-modal-root .vt-review-actions button {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
 #vt-modal-root .vt-footer,
 #vt-modal-root .vt-actions {
   display: flex;

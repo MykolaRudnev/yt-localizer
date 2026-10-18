@@ -15,7 +15,8 @@ Chrome MV3 extension (+ optional CLI) that adds an **Auto Titles & Description**
 - **One-click Studio flow** — pick **Top 10**, **Top 20**, **Top 10 RPM**, **Top 20 RPM**, or a custom language set
 - **Engines** — DeepL Free (primary), Gemini free-tier fallback (model auto-pick + quota cascading), LibreTranslate (self-hosted)
 - **Preview before publish** — edit titles/descriptions in a table; dry-run ON by default
-- **Opt-in auto-publish** — or explicit Publish after preview
+- **Reviewable title shortening** — segment-aware fit to YouTube’s 100-char limit; shortened rows need one-click Approve (or edit) before publish
+- **Opt-in auto-publish** — or explicit Publish after preview (shortened titles never auto-publish)
 - **Background jobs** — progress modal, minimized Studio widget, toolbar popup status
 - **Translation cache** — closing the modal mid-job does not throw work away
 - **Multi-channel / multi-account** — per-channel OAuth tokens and language settings
@@ -25,9 +26,9 @@ Chrome MV3 extension (+ optional CLI) that adds an **Auto Titles & Description**
 |-----------|----------|---------|
 | ![languages](docs/screenshots/modal-languages.png) | ![translating](docs/screenshots/translating.png) | ![preview](docs/screenshots/preview.png) |
 
-| Widget | Popup | Options |
-|--------|-------|---------|
-| ![widget](docs/screenshots/widget.png) | ![popup](docs/screenshots/popup.png) | ![options](docs/screenshots/options.png) |
+| Review shortened | Widget | Popup | Options |
+|------------------|--------|-------|---------|
+| ![review](docs/screenshots/review-shortened.png) | ![widget](docs/screenshots/widget.png) | ![popup](docs/screenshots/popup.png) | ![options](docs/screenshots/options.png) |
 
 ## Why
 

@@ -18,6 +18,7 @@ const shots = [
   { id: 'shot-modal-languages', file: 'modal-languages.png', target: '.vt-panel' },
   { id: 'shot-translating', file: 'translating.png', target: '.vt-panel' },
   { id: 'shot-preview', file: 'preview.png', target: '.vt-panel' },
+  { id: 'shot-review-shortened', file: 'review-shortened.png', target: '.vt-panel' },
   { id: 'shot-widget', file: 'widget.png', target: '.studio-bg' },
   { id: 'shot-popup', file: 'popup.png', target: '.popup' },
   { id: 'shot-options', file: 'options.png', target: '.options-wrap' },

@@ -52,6 +52,28 @@ describe('translation cache hit/miss', () => {
       language: 'es',
       title: 'Hola',
       description: 'Mundo',
+      fullTitle: 'Hola',
+      autoTitle: 'Hola',
+      shortened: false,
+      removed: undefined,
+      reviewed: true,
+    });
+
+    // Old v1-style entries (no fullTitle) remain readable
+    expect(
+      cachedToResult({
+        language: 'de',
+        sourceHash: hash,
+        title: 'Hallo',
+        description: 'Welt',
+        touchedAt: 1,
+      }),
+    ).toMatchObject({
+      language: 'de',
+      title: 'Hallo',
+      fullTitle: 'Hallo',
+      shortened: false,
+      reviewed: true,
     });
 
     const otherHash = hashTranslationSource({ ...baseHashInput, title: 'Changed' });

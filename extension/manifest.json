@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "YT Localizer",
   "short_name": "YT Localizer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Translate YouTube titles & descriptions into official localizations from Studio.",
   "permissions": [
     "storage",

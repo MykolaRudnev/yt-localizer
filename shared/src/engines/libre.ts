@@ -1,10 +1,6 @@
 import type { TranslateOptions, TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
-import {
-  applyTitleLimit,
-  prepareForTranslation,
-  restoreAfterTranslation,
-} from '../text.js';
+import { prepareForTranslation, restoreAfterTranslation } from '../text.js';
 
 export function createLibreTranslateEngine(
   baseUrl: string,
@@ -46,9 +42,9 @@ export function createLibreTranslateEngine(
           { label: 'libretranslate', signal: options.signal },
         );
 
-      let outTitle = restoreAfterTranslation(await translateOne(prepared.title), prepared.maps);
-      let outDesc = restoreAfterTranslation(await translateOne(prepared.description), prepared.maps);
-      outTitle = applyTitleLimit(outTitle, options.titleOver100);
+      const outTitle = restoreAfterTranslation(await translateOne(prepared.title), prepared.maps);
+      const outDesc = restoreAfterTranslation(await translateOne(prepared.description), prepared.maps);
+      // Full title kept; segment-aware fit happens in translateTitleDescription.
       return [outTitle, outDesc];
     },
   };

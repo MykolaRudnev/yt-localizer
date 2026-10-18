@@ -52,11 +52,20 @@ Successful (and partial) translations are cached so closing the modal does not l
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| **Title > 100 chars** | Truncate at word boundary · Ask AI to shorten | Truncate |
+| **Title > 100 chars** | Segment-aware shorten (local, free) · Ask AI to shorten | Segment-aware |
+| **Protect last segment** | Keep the final title segment (e.g. “Focus & Sleep”) when shortening | ON |
 | **Hashtags** | Keep · Translate | Keep |
 | **Chapter lines** | Translate labels, keep timestamps · Keep as is | Translate labels |
 | **Dry-run** | Preview only; Publish disabled | ON on first install |
 | **Skip existing** | Do not re-translate languages that already have a localization | ON |
+
+### Title > 100 (reviewable shortening)
+
+YouTube titles are capped at **100 characters**. YT Localizer always keeps the **full translation** (`fullTitle`) and fits a publishable `title`:
+
+1. **Segment-aware shorten (default)** — splits on `|`, `—`, `–`, ` - `, `·`, `:` and protects the first segment, duration phrases (e.g. `1.5 Hours`, `90 min`, `1,5 часа`, `3 Stunden`, `1.5 時間`), your protected terms, and optionally the last segment. Middles are compacted, then shortened or dropped; never cuts inside a protected segment.
+2. **Ask AI to shorten** — Gemini rewrites the title while respecting those protected phrases, then the same local safety fit applies. Still goes through review.
+3. **Review gate** — every shortened row is **needs review** until you **Approve** (accept auto fit) or **edit** the title (any edit ≤100 unblocks). **Use full** loads the untruncated translation for manual trimming; **Reset** restores the auto fit. Publish is **Publish N ready (M need review)** and only ships ready rows. Auto-publish never publishes shortened rows until reviewed.
 
 The Studio modal can temporarily choose **Overwrite** instead of skip for that job. Dry-run can also be toggled in the modal / popup.
 
