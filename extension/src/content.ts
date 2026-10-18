@@ -11,6 +11,13 @@ import { flagForLanguage } from '@shared/langs';
 import { charWarning } from '@shared/text';
 import type { AppSettings, LocalizationResult } from '@shared/types';
 import languagesData from '../../languages.json';
+import { connectRuntimePort, sendRuntimeMessage } from './messaging';
+
+declare global {
+  interface Window {
+    __veilTranslateContentLoaded?: boolean;
+  }
+}
 
 const BUTTON_ID = 'veil-translate-btn';
 const MODAL_ID = 'vt-modal-root';
@@ -70,7 +77,9 @@ function ensureButton() {
 }
 
 async function sendMsg<T = unknown>(payload: Record<string, unknown>): Promise<T> {
-  return chrome.runtime.sendMessage(payload) as Promise<T>;
+  const res = await sendRuntimeMessage<T>(payload);
+  if (res == null) throw new Error('Extension background unavailable — try reloading the extension');
+  return res;
 }
 
 async function getSettings(): Promise<AppSettings> {
@@ -86,11 +95,8 @@ async function fetchJob(): Promise<TranslateJob | null> {
 
 function connectJobPort() {
   if (jobPort) return;
-  try {
-    jobPort = chrome.runtime.connect({ name: JOB_PORT });
-  } catch {
-    return;
-  }
+  jobPort = connectRuntimePort(JOB_PORT);
+  if (!jobPort) return;
   jobPort.onMessage.addListener((msg: { type?: string; job?: TranslateJob | null }) => {
     if (msg.type === 'JOB_UPDATE' || msg.type === 'PONG') {
       currentJob = msg.job ?? null;
@@ -98,6 +104,7 @@ function connectJobPort() {
     }
   });
   jobPort.onDisconnect.addListener(() => {
+    void chrome.runtime.lastError;
     jobPort = null;
     // Reconnect while a job may still be running
     if (currentJob?.phase === 'running') {
@@ -1233,4 +1240,23 @@ function watchSpa() {
   }, 1000);
 }
 
-watchSpa();
+// Skip duplicate boot when chrome.scripting re-injects after an extension update.
+if (!window.__veilTranslateContentLoaded) {
+  window.__veilTranslateContentLoaded = true;
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (
+      message &&
+      typeof message === 'object' &&
+      (message as { type?: string }).type === 'VT_PING'
+    ) {
+      try {
+        sendResponse({ ok: true, videoId: getVideoId() });
+      } catch {
+        /* channel closed */
+      }
+      return true;
+    }
+    return false;
+  });
+  watchSpa();
+}
