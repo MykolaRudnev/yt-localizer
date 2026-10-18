@@ -46,7 +46,7 @@ async function parseTokenResponse(responseUrl: string): Promise<TokenResult> {
 async function launchWebAuth(opts: OAuthLaunchOpts): Promise<TokenResult> {
   const settings = await getSettings();
   if (!settings.oauthClientId.trim()) {
-    throw new Error('Set OAuth Client ID in VeilTranslate options first.');
+    throw new Error('Set OAuth Client ID in YT Localizer options first.');
   }
 
   const redirectUri = chrome.identity.getRedirectURL();
@@ -151,7 +151,7 @@ async function persistConnectedChannel(tokens: TokenResult): Promise<ConnectedCh
 export async function getValidAccessToken(channelId: string): Promise<string> {
   let channel = await getChannel(channelId);
   if (!channel) {
-    throw new Error(`Channel ${channelId} is not connected. Add it in the VeilTranslate popup.`);
+    throw new Error(`Channel ${channelId} is not connected. Add it in the YT Localizer popup.`);
   }
 
   if (isAccessTokenFresh(channel)) return channel.accessToken;

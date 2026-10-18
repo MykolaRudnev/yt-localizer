@@ -1,4 +1,4 @@
-# CLI (`yt-translate`)
+# CLI (`yt-localizer`)
 
 Optional Node CLI that reuses the same translation pipeline and YouTube Data API helpers as the extension.
 
@@ -12,7 +12,7 @@ npm run build
 Binary entry (via npm script):
 
 ```bash
-npm run yt-translate -- <videoId> --langs es,de,pl [--engine gemini|deepl|libretranslate] [--dry-run|--publish]
+npm run yt-localizer -- <videoId> --langs es,de,pl [--engine gemini|deepl|libretranslate] [--dry-run|--publish]
 ```
 
 ## Secrets file
@@ -42,10 +42,10 @@ First run opens a browser for consent; tokens are saved back into `.cli-secrets.
 
 ```bash
 # Preview only (default if --publish is omitted)
-npm run yt-translate -- dQw4w9WgXcQ --langs es,de,pl --engine deepl --dry-run
+npm run yt-localizer -- dQw4w9WgXcQ --langs es,de,pl --engine deepl --dry-run
 
 # Publish localizations (merge; does not delete other languages)
-npm run yt-translate -- dQw4w9WgXcQ --langs es,de --engine gemini --publish
+npm run yt-localizer -- dQw4w9WgXcQ --langs es,de --engine gemini --publish
 ```
 
 ## Notes

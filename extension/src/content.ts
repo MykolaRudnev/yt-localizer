@@ -563,7 +563,7 @@ async function openQuickModal() {
         skipExisting,
       });
       if (!res?.ok) {
-        alert(`VeilTranslate: ${res?.error ?? 'Unknown error'}`);
+        alert(`YT Localizer: ${res?.error ?? 'Unknown error'}`);
         return;
       }
       connectJobPort();
@@ -639,7 +639,7 @@ async function openQuickModal() {
     panel.innerHTML = `
       <div class="vt-panel-head">
         <div>
-          <span class="vt-brand-mark">VeilTranslate</span>
+          <span class="vt-brand-mark">YT Localizer</span>
           <h2 id="vt-title">Auto Titles &amp; Description</h2>
         </div>
         <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
@@ -773,7 +773,7 @@ async function openQuickModal() {
   } catch (err) {
     removeModal();
     uiExpanded = false;
-    alert(`VeilTranslate: ${err instanceof Error ? err.message : String(err)}`);
+    alert(`YT Localizer: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -1241,7 +1241,7 @@ async function retryLanguages(videoId: string, languages: string[]) {
     skipExisting: false,
   });
   if (!res?.ok) {
-    alert(`VeilTranslate: ${res?.error ?? 'Retry failed'}`);
+    alert(`YT Localizer: ${res?.error ?? 'Retry failed'}`);
     return;
   }
   connectJobPort();

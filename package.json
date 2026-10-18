@@ -1,5 +1,5 @@
 {
-  "name": "veil-translate",
+  "name": "yt-localizer",
   "version": "1.0.0",
   "description": "Chrome MV3 extension + CLI to translate YouTube titles/descriptions and publish official localizations via YouTube Data API v3",
   "license": "MIT",
@@ -7,12 +7,15 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MykolaRudnevHUBER/veil-translate.git"
+    "url": "https://github.com/MykolaRudnevHUBER/yt-localizer.git"
   },
   "bugs": {
-    "url": "https://github.com/MykolaRudnevHUBER/veil-translate/issues"
+    "url": "https://github.com/MykolaRudnevHUBER/yt-localizer/issues"
   },
-  "homepage": "https://github.com/MykolaRudnevHUBER/veil-translate#readme",
+  "homepage": "https://github.com/MykolaRudnevHUBER/yt-localizer#readme",
+  "bin": {
+    "yt-localizer": "cli/dist/cli/src/index.js"
+  },
   "keywords": [
     "youtube",
     "youtube-studio",
@@ -32,7 +35,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "screenshots": "node scripts/screenshots.mjs",
-    "yt-translate": "node cli/dist/cli/src/index.js"
+    "yt-localizer": "node cli/dist/cli/src/index.js"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

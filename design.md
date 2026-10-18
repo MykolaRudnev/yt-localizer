@@ -1,6 +1,6 @@
-# Design — VeilTranslate
+# Design — YT Localizer
 
-A locked design system for the VeilTranslate extension UI (Studio modal, status
+A locked design system for the YT Localizer extension UI (Studio modal, status
 widget, toolbar popup, options page). Every surface redesign reads this file
 before emitting code. Do not regenerate per surface — extend or amend this file
 when the system needs to grow.
@@ -16,7 +16,7 @@ App / tool surfaces only (no marketing pages).
   chip vs outline presets, progress density.
 
 ## Theme
-Custom **Veil** — dark Studio-adjacent UI: cool blue-grey neutrals, clear blue
+Custom **Localizer** — dark Studio-adjacent UI: cool blue-grey neutrals, clear blue
 accent (hue ~245), restrained. Never purple gradients, glassmorphism, or
 decorative emoji chrome.
 
@@ -74,7 +74,7 @@ outside the token block.
 
 ## Per-page allowances
 - Studio modal / widget: scoped under `#vt-modal-root`, `#vt-job-widget`, `#veil-translate-btn` only
-- Popup / options: page-local `:root` tokens mirroring Veil; no Studio leak concern
+- Popup / options: page-local `:root` tokens mirroring Localizer; no Studio leak concern
 - App surfaces MUST NOT use enrichment — function carries the UI
 - Do not change messaging, storage, API, session-lifecycle, or RPM preset logic
   beyond the documented session-end clear (CLEAR_JOB + widget/badge removal)

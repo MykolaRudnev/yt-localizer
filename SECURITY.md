@@ -6,7 +6,7 @@ Please open a **private** security advisory on GitHub (preferred), or email the 
 
 ## How secrets are stored
 
-VeilTranslate never ships with your keys:
+YT Localizer never ships with your keys:
 
 | Secret | Where it lives |
 |--------|----------------|

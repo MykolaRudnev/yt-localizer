@@ -1,5 +1,5 @@
-/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: custom (Veil)
- * vibe: dark mystical restrained · cool blue accent · designed-as-app · design-system: design.md
+/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: custom (Localizer)
+ * vibe: dark Studio-adjacent restrained · cool blue accent · designed-as-app · design-system: design.md
  * states: default · hover · focus · active · disabled · loading · error · success
  * contrast: pass (scoped Studio overlay)
  * pre-emit critique: P5 H5 E4 S5 R5 V4
@@ -48,7 +48,7 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Studio light theme companion — still Veil-branded, not a white SaaS card */
+/* Studio light theme companion — still Localizer-branded, not a white SaaS card */
 html:not([dark]):not([darker-dark-theme]) #veil-translate-btn,
 html:not([dark]):not([darker-dark-theme]) #vt-job-widget,
 html:not([dark]):not([darker-dark-theme]) #vt-modal-root {
