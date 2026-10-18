@@ -399,11 +399,14 @@ async function runTranslateFlow(
     status: LangRowState,
     error?: string,
     errorDetail?: string,
+    engine?: string,
+    model?: string,
   ) => {
     const row = progressRoot.querySelector(`[data-lang="${CSS.escape(lang)}"]`) as HTMLElement | null;
     if (!row) return;
     row.dataset.status = status;
     const label = row.querySelector('.vt-lang-status') as HTMLElement;
+    const eng = row.querySelector('.vt-lang-engine') as HTMLElement | null;
     const short =
       status === 'pending'
         ? 'pending'
@@ -414,6 +417,11 @@ async function runTranslateFlow(
             : 'failed';
     label.textContent = short;
     label.className = `vt-lang-status vt-${status === 'ok' ? 'ok' : status === 'failed' ? 'err' : 'muted'}`;
+    if (eng) {
+      const text = engineLabel(engine, model);
+      eng.textContent = text;
+      eng.title = text;
+    }
     const details = row.querySelector('details') as HTMLDetailsElement | null;
     if (status === 'failed' && (error || errorDetail)) {
       if (details) {
@@ -429,7 +437,11 @@ async function runTranslateFlow(
   };
 
   let activeModel = '';
-  const modelSuffix = () => (activeModel ? ` · ${activeModel}` : '');
+  let activeEngine = '';
+  const engineSuffix = () => {
+    const label = engineLabel(activeEngine || undefined, activeModel || undefined);
+    return label ? ` · ${label}` : '';
+  };
 
   const onMsg = (msg: {
     type?: string;
@@ -445,9 +457,11 @@ async function runTranslateFlow(
     fatalSummary?: string;
     fatalHint?: string;
     model?: string;
+    engine?: string;
   }) => {
     if (msg.type === 'VT_PROGRESS') {
       if (msg.model) activeModel = msg.model;
+      if (msg.engine) activeEngine = msg.engine;
       if (msg.languages?.length) {
         // ensure rows exist if background sends full list
         const list = progressRoot.querySelector('#vt-progress-list');
@@ -462,21 +476,25 @@ async function runTranslateFlow(
         if (msg.fatalSummary) {
           el.innerHTML = `<strong class="vt-err">${escapeHtml(msg.fatalSummary)}</strong>${
             msg.fatalHint ? `<div class="vt-hint">${escapeHtml(msg.fatalHint)}</div>` : ''
-          }${activeModel ? `<div class="vt-hint">Model: ${escapeHtml(activeModel)}</div>` : ''}`;
-        } else if (msg.model && !msg.language) {
-          el.textContent = `Using ${msg.model}…`;
+          }${activeModel || activeEngine ? `<div class="vt-hint">${escapeHtml(engineLabel(activeEngine, activeModel))}</div>` : ''}`;
+        } else if ((msg.model || msg.engine) && !msg.language) {
+          el.textContent = `Using ${engineLabel(msg.engine ?? activeEngine, msg.model ?? activeModel)}…`;
         } else if (msg.status === 'running') {
-          el.textContent = `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})${modelSuffix()}…`;
+          el.textContent = `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})${engineSuffix()}…`;
         } else if (msg.status === 'ok') {
-          el.textContent = `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})${modelSuffix()}`;
+          el.textContent = `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})${engineSuffix()}`;
         } else if (msg.status === 'failed' && msg.language) {
-          el.textContent = `Failed ${msg.language}${modelSuffix()}`;
+          el.textContent = `Failed ${msg.language}${engineSuffix()}`;
         }
       }
-      if (msg.language && msg.status === 'running') setRow(msg.language, 'running');
-      if (msg.language && msg.status === 'ok') setRow(msg.language, 'ok');
+      if (msg.language && msg.status === 'running') {
+        setRow(msg.language, 'running', undefined, undefined, msg.engine, msg.model);
+      }
+      if (msg.language && msg.status === 'ok') {
+        setRow(msg.language, 'ok', undefined, undefined, msg.engine, msg.model);
+      }
       if (msg.language && msg.status === 'failed') {
-        setRow(msg.language, 'failed', msg.error, msg.errorDetail);
+        setRow(msg.language, 'failed', msg.error, msg.errorDetail, msg.engine, msg.model);
       }
     }
     if (msg.type === 'VT_STATUS') {
@@ -595,12 +613,19 @@ function makeLangRow(code: string): HTMLElement {
   row.dataset.status = 'pending';
   row.innerHTML = `
     <span class="vt-lang-code">${escapeHtml(code)}</span>
+    <span class="vt-lang-engine vt-muted"></span>
     <span class="vt-lang-status vt-muted">pending</span>
     <details style="display:none">
       <summary>Error</summary>
       <pre class="vt-err-detail"></pre>
     </details>`;
   return row;
+}
+
+function engineLabel(engine?: string, model?: string): string {
+  if (!engine) return '';
+  if (engine === 'gemini' && model) return `${engine} · ${model}`;
+  return engine;
 }
 
 function showProgressOverlay(languages: string[]): HTMLElement {

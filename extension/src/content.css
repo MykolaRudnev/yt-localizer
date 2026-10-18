@@ -268,7 +268,7 @@
 
 #vt-modal-root .vt-lang-row {
   display: grid;
-  grid-template-columns: 4.5rem 4.5rem 1fr;
+  grid-template-columns: 3.5rem minmax(0, 1fr) 4rem 1fr;
   gap: 0.35rem;
   align-items: start;
   padding: 0.2rem 0.15rem;
@@ -277,6 +277,13 @@
 
 #vt-modal-root .vt-lang-code {
   font-weight: 600;
+}
+
+#vt-modal-root .vt-lang-engine {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
 }
 
 #vt-modal-root .vt-lang-status.vt-muted,

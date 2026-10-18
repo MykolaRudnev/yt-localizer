@@ -37,6 +37,16 @@ export function isJsonModeUnsupportedError(err: unknown): boolean {
   return /JSON mode|responseMimeType|responseSchema/i.test(msg);
 }
 
+/** Daily / per-model quota (not short rate-limit). Pipeline may switch models when auto-fallback is on. */
+export function isQuotaExhaustedError(err: unknown): boolean {
+  const status = extractHttpStatus(err);
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    status === 429 &&
+    /quota|RESOURCE_EXHAUSTED|daily|exceeded your current quota/i.test(msg)
+  );
+}
+
 /**
  * FATAL: invalid key, auth, model missing, daily quota exhausted.
  * TRANSIENT: rate limit 429, 5xx, network, JSON-mode-unsupported — safe to retry/fallback.
@@ -57,12 +67,7 @@ export function classifyError(err: unknown): ErrorKind {
     return 'fatal';
   }
   if (isModelNotFoundError(err)) return 'fatal';
-  if (
-    status === 429 &&
-    /quota|RESOURCE_EXHAUSTED|daily|exceeded your current quota/i.test(msg)
-  ) {
-    return 'fatal';
-  }
+  if (isQuotaExhaustedError(err)) return 'fatal';
   if (status === 429) return 'transient';
   if (status !== undefined && status >= 500) return 'transient';
   if (
