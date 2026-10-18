@@ -64,6 +64,16 @@ a {
   display: none !important;
 }
 
+.studio-hint {
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.85rem;
+  color: #f0d78c;
+  background: #2a2414;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+}
+
 .checklist {
   border-color: var(--warn);
   background: #2a2414;

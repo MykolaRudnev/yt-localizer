@@ -3,6 +3,7 @@ import { preflightEngine } from '@shared/engines/index';
 import { normalizeAppSettings } from '@shared/settings';
 import type { AppSettings, ChannelSettings } from '@shared/types';
 import languagesData from '../../languages.json';
+import { sendRuntimeMessage } from './messaging';
 
 type LangFile = {
   presets: Record<string, { label: string; codes: string[] }>;
@@ -119,9 +120,13 @@ function readChannelForm(selected: Set<string>, lastUsed: string[]): ChannelSett
 async function refreshCacheStats() {
   const el = $('cacheStats');
   try {
-    const res = (await chrome.runtime.sendMessage({
+    const res = await sendRuntimeMessage<{
+      ok?: boolean;
+      videos?: number;
+      entries?: number;
+    }>({
       type: 'GET_TRANSLATION_CACHE_STATS',
-    })) as { ok?: boolean; videos?: number; entries?: number };
+    });
     if (res?.ok) {
       el.textContent = `${res.entries ?? 0} cached translations across ${res.videos ?? 0} videos (LRU cap 200 videos).`;
     } else {
@@ -162,11 +167,11 @@ async function main() {
   let lastUsed: string[] = [];
   let activeChannelId = '';
 
-  const auth = (await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATE' })) as {
+  const auth = (await sendRuntimeMessage<{
     ok: boolean;
     channels?: ChannelView[];
     activeChannelId?: string | null;
-  };
+  }>({ type: 'GET_AUTH_STATE' })) ?? { ok: false };
   const channels = auth.channels ?? [];
   const sel = $('channelSelect') as HTMLSelectElement;
   sel.innerHTML = '';
@@ -186,11 +191,11 @@ async function main() {
     activeChannelId = auth.activeChannelId ?? channels[0].id;
     sel.value = activeChannelId;
     $('channelSettingsPanel').classList.remove('hidden');
-    const chRes = (await chrome.runtime.sendMessage({
+    const chRes = await sendRuntimeMessage<{ ok: boolean; settings?: ChannelSettings }>({
       type: 'GET_CHANNEL_SETTINGS',
       channelId: activeChannelId,
-    })) as { ok: boolean; settings?: ChannelSettings };
-    if (chRes.settings) {
+    });
+    if (chRes?.settings) {
       selected.clear();
       chRes.settings.selectedLanguages.forEach((c) => selected.add(c));
       lastUsed = [...(chRes.settings.lastUsedLanguages ?? selected)];
@@ -212,11 +217,11 @@ async function main() {
       return;
     }
     $('channelSettingsPanel').classList.remove('hidden');
-    const chRes = (await chrome.runtime.sendMessage({
+    const chRes = await sendRuntimeMessage<{ ok: boolean; settings?: ChannelSettings }>({
       type: 'GET_CHANNEL_SETTINGS',
       channelId: activeChannelId,
-    })) as { ok: boolean; settings?: ChannelSettings };
-    if (!chRes.settings) return;
+    });
+    if (!chRes?.settings) return;
     selected.clear();
     chRes.settings.selectedLanguages.forEach((c) => selected.add(c));
     lastUsed = [...(chRes.settings.lastUsedLanguages ?? selected)];
@@ -299,7 +304,7 @@ async function main() {
     if (!confirm('Clear all cached translations? You may re-use free quota on the next run.')) {
       return;
     }
-    await chrome.runtime.sendMessage({ type: 'CLEAR_TRANSLATION_CACHE' });
+    await sendRuntimeMessage({ type: 'CLEAR_TRANSLATION_CACHE' });
     await refreshCacheStats();
     $('status').textContent = 'Translation cache cleared.';
     setTimeout(() => {
@@ -310,9 +315,9 @@ async function main() {
   $('autoPublish').addEventListener('change', async () => {
     const cb = $('autoPublish') as HTMLInputElement;
     if (!cb.checked) return;
-    const ack = (await chrome.runtime.sendMessage({
+    const ack = await sendRuntimeMessage<{ ok?: boolean; acked?: boolean }>({
       type: 'GET_AUTO_PUBLISH_ACK',
-    })) as { ok?: boolean; acked?: boolean };
+    });
     if (ack?.acked) return;
     const ok = confirm(
       'Auto-publish writes translations to YouTube as they finish (in batches). Dry-run must be OFF. Continue?',
@@ -321,7 +326,7 @@ async function main() {
       cb.checked = false;
       return;
     }
-    await chrome.runtime.sendMessage({ type: 'ACK_AUTO_PUBLISH' });
+    await sendRuntimeMessage({ type: 'ACK_AUTO_PUBLISH' });
   });
 
   $('save').addEventListener('click', async () => {
@@ -337,7 +342,7 @@ async function main() {
     if (activeChannelId) {
       lastUsed = [...selected];
       const channelSettings = readChannelForm(selected, lastUsed);
-      await chrome.runtime.sendMessage({
+      await sendRuntimeMessage({
         type: 'PATCH_CHANNEL_SETTINGS',
         channelId: activeChannelId,
         partial: channelSettings,
@@ -349,10 +354,14 @@ async function main() {
     }
 
     // Save via background so GET_SETTINGS / jobs always see the fresh value (incl. engine).
-    const saved = (await chrome.runtime.sendMessage({
+    const saved = await sendRuntimeMessage<{
+      ok: boolean;
+      settings?: AppSettings;
+      error?: string;
+    }>({
       type: 'SAVE_SETTINGS',
       settings: next,
-    })) as { ok: boolean; settings?: AppSettings; error?: string };
+    });
     if (!saved?.ok) {
       $('status').textContent = saved?.error ?? 'Save failed';
       return;

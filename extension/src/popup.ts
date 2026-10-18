@@ -1,5 +1,10 @@
 import { jobFailed, jobPercent, type TranslateJob } from '@shared/job';
 import type { AppSettings } from '@shared/types';
+import {
+  connectRuntimePort,
+  probeStudioTab,
+  sendRuntimeMessage,
+} from './messaging';
 
 type ChannelView = {
   id: string;
@@ -11,44 +16,57 @@ type ChannelView = {
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+const STUDIO_HINT = 'Open/refresh a YouTube Studio tab';
+
 async function load() {
+  const studioHint = $('studioHint');
+  try {
+    const probe = await probeStudioTab({ injectIfMissing: true });
+    if (probe.status === 'ok') {
+      studioHint.classList.add('hidden');
+      studioHint.textContent = '';
+    } else {
+      studioHint.textContent = STUDIO_HINT;
+      studioHint.classList.remove('hidden');
+    }
+  } catch {
+    studioHint.textContent = STUDIO_HINT;
+    studioHint.classList.remove('hidden');
+  }
+
   const [settingsRes, authRes, jobRes] = await Promise.all([
-    chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }) as Promise<{
-      ok: boolean;
-      settings?: AppSettings;
-    }>,
-    chrome.runtime.sendMessage({ type: 'GET_AUTH_STATE' }) as Promise<{
+    sendRuntimeMessage<{ ok: boolean; settings?: AppSettings }>({
+      type: 'GET_SETTINGS',
+    }),
+    sendRuntimeMessage<{
       ok: boolean;
       loggedIn?: boolean;
       channels?: ChannelView[];
       activeChannelId?: string | null;
-    }>,
-    chrome.runtime.sendMessage({ type: 'GET_JOB' }) as Promise<{
-      ok: boolean;
-      job?: TranslateJob | null;
-    }>,
+    }>({ type: 'GET_AUTH_STATE' }),
+    sendRuntimeMessage<{ ok: boolean; job?: TranslateJob | null }>({
+      type: 'GET_JOB',
+    }),
   ]);
 
-  const settings = settingsRes.settings;
+  const settings = settingsRes?.settings;
   if (!settings) return;
 
   renderChecklist(settings);
-  await renderChannels(authRes.channels ?? [], authRes.activeChannelId ?? null);
-  renderStatus(settings, authRes.channels ?? [], authRes.activeChannelId ?? null);
-  renderJob(jobRes.job ?? null);
+  await renderChannels(authRes?.channels ?? [], authRes?.activeChannelId ?? null);
+  renderStatus(settings, authRes?.channels ?? [], authRes?.activeChannelId ?? null);
+  renderJob(jobRes?.job ?? null);
 
-  try {
-    const port = chrome.runtime.connect({ name: 'vt-job' });
+  const port = connectRuntimePort('vt-job');
+  if (port) {
     port.onMessage.addListener((msg: { type?: string; job?: TranslateJob | null }) => {
       if (msg.type === 'JOB_UPDATE' || msg.type === 'PONG') renderJob(msg.job ?? null);
     });
-  } catch {
-    /* ignore */
   }
 
   ($('dryRun') as HTMLInputElement).checked = settings.dryRun;
   $('dryRun').onchange = async () => {
-    await chrome.runtime.sendMessage({
+    await sendRuntimeMessage({
       type: 'PATCH_SETTINGS',
       partial: { dryRun: ($('dryRun') as HTMLInputElement).checked },
     });
@@ -56,7 +74,7 @@ async function load() {
 
   $('openOptions').onclick = (e) => {
     e.preventDefault();
-    void chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+    void sendRuntimeMessage({ type: 'OPEN_OPTIONS' });
   };
 
   $('setupLink').onclick = (e) => {
@@ -65,19 +83,19 @@ async function load() {
   };
 
   $('openStudio').onclick = () => {
-    void chrome.runtime.sendMessage({ type: 'OPEN_STUDIO_FOR_JOB' });
+    void sendRuntimeMessage({ type: 'OPEN_STUDIO_FOR_JOB' });
   };
 
   $('addChannelBtn').onclick = async () => {
     const btn = $('addChannelBtn') as HTMLButtonElement;
     btn.disabled = true;
     try {
-      const res = (await chrome.runtime.sendMessage({ type: 'ADD_CHANNEL' })) as {
+      const res = await sendRuntimeMessage<{
         ok: boolean;
         error?: string;
         channels?: ChannelView[];
         activeChannelId?: string | null;
-      };
+      }>({ type: 'ADD_CHANNEL' });
       if (!res?.ok) {
         alert(res?.error ?? 'Add channel failed');
         return;
@@ -178,20 +196,20 @@ async function renderChannels(channels: ChannelView[], activeChannelId: string |
       <button type="button" class="linkish remove" data-id="${escapeAttr(ch.id)}">Remove</button>`;
 
     row.querySelector('input')!.addEventListener('change', async () => {
-      const res = (await chrome.runtime.sendMessage({
-        type: 'SET_ACTIVE_CHANNEL',
-        channelId: ch.id,
-      })) as {
+      const res = await sendRuntimeMessage<{
         ok: boolean;
         channels?: ChannelView[];
         activeChannelId?: string | null;
-      };
+      }>({
+        type: 'SET_ACTIVE_CHANNEL',
+        channelId: ch.id,
+      });
       if (res?.ok) {
         await renderChannels(res.channels ?? [], res.activeChannelId ?? null);
-        const settingsRes = (await chrome.runtime.sendMessage({
+        const settingsRes = await sendRuntimeMessage<{ settings?: AppSettings }>({
           type: 'GET_SETTINGS',
-        })) as { settings?: AppSettings };
-        if (settingsRes.settings) {
+        });
+        if (settingsRes?.settings) {
           renderStatus(settingsRes.settings, res.channels ?? [], res.activeChannelId ?? null);
         }
       }
@@ -199,20 +217,20 @@ async function renderChannels(channels: ChannelView[], activeChannelId: string |
 
     row.querySelector('.remove')!.addEventListener('click', async () => {
       if (!confirm(`Remove ${ch.title}?`)) return;
-      const res = (await chrome.runtime.sendMessage({
-        type: 'REMOVE_CHANNEL',
-        channelId: ch.id,
-      })) as {
+      const res = await sendRuntimeMessage<{
         ok: boolean;
         channels?: ChannelView[];
         activeChannelId?: string | null;
-      };
+      }>({
+        type: 'REMOVE_CHANNEL',
+        channelId: ch.id,
+      });
       if (res?.ok) {
         await renderChannels(res.channels ?? [], res.activeChannelId ?? null);
-        const settingsRes = (await chrome.runtime.sendMessage({
+        const settingsRes = await sendRuntimeMessage<{ settings?: AppSettings }>({
           type: 'GET_SETTINGS',
-        })) as { settings?: AppSettings };
-        if (settingsRes.settings) {
+        });
+        if (settingsRes?.settings) {
           renderStatus(settingsRes.settings, res.channels ?? [], res.activeChannelId ?? null);
         }
       }
@@ -251,4 +269,4 @@ function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/'/g, '&#39;');
 }
 
-load();
+void load();
