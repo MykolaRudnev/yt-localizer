@@ -68,6 +68,11 @@ function readGlobalForm(): AppSettings {
     chapterMode: ($('chapterMode') as HTMLSelectElement).value as AppSettings['chapterMode'],
     dryRun: ($('dryRun') as HTMLInputElement).checked,
     skipExisting: ($('skipExisting') as HTMLInputElement).checked,
+    autoFallbackOnQuota: ($('autoFallbackOnQuota') as HTMLInputElement).checked,
+    geminiThrottleMs: Math.max(
+      0,
+      Number(($('geminiThrottleMs') as HTMLInputElement).value) || 4000,
+    ),
   };
 }
 
@@ -84,6 +89,8 @@ function fillGlobalForm(s: AppSettings) {
   ($('chapterMode') as HTMLSelectElement).value = s.chapterMode;
   ($('dryRun') as HTMLInputElement).checked = s.dryRun;
   ($('skipExisting') as HTMLInputElement).checked = s.skipExisting;
+  ($('autoFallbackOnQuota') as HTMLInputElement).checked = s.autoFallbackOnQuota !== false;
+  ($('geminiThrottleMs') as HTMLInputElement).value = String(s.geminiThrottleMs ?? 4000);
 }
 
 function fillChannelForm(s: ChannelSettings) {

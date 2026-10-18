@@ -24,6 +24,7 @@ import {
   getChannelSettings,
   getChannels,
   getGeminiAutoModel,
+  getGeminiExhaustedModels,
   getGeminiJsonModeByModel,
   getSettings,
   patchChannelSettings,
@@ -31,6 +32,7 @@ import {
   saveSettings,
   setActiveChannelId,
   setGeminiAutoModel,
+  setGeminiModelExhausted,
   setGeminiModelJsonMode,
 } from './storage';
 
@@ -365,6 +367,7 @@ async function startTranslate(
     const description = video.snippet.description;
     const geminiAutoModel = await getGeminiAutoModel();
     const geminiJsonModeByModel = await getGeminiJsonModeByModel();
+    const geminiExhaustedModels = await getGeminiExhaustedModels();
 
     await notifyTab(tabId, {
       type: 'VT_PROGRESS',
@@ -380,7 +383,12 @@ async function startTranslate(
         title,
         description,
         langs,
-        { ...settings, geminiAutoModel, geminiJsonModeByModel },
+        {
+          ...settings,
+          geminiAutoModel,
+          geminiJsonModeByModel,
+          geminiExhaustedModels,
+        },
         async (info) => {
           await notifyTab(tabId, { type: 'VT_PROGRESS', ...info, languages: langs });
         },
@@ -389,6 +397,8 @@ async function startTranslate(
           onGeminiModelResolved: (model) => setGeminiAutoModel(model),
           onGeminiJsonModeResolved: (model, jsonMode) =>
             setGeminiModelJsonMode(model, jsonMode),
+          onGeminiModelExhausted: (model, untilMs) =>
+            setGeminiModelExhausted(model, untilMs),
         },
       );
 

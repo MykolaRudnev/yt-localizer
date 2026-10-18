@@ -115,20 +115,27 @@ export function isEligibleChatModel(id: string): boolean {
 }
 
 /**
- * Best plain-text chat model (flash/pro); lite only if nothing else.
- * Falls back to GEMINI_FALLBACK_MODEL if nothing matches.
+ * Eligible chat models sorted best-first: stable flash → flash-lite → flash-preview → pro…
  */
-export function pickBestFlashModel(models: string[]): string {
-  const eligible = models
-    .map(normalizeGeminiModelId)
-    .filter((id) => chatModelRank(id) >= 0);
-  if (!eligible.length) return GEMINI_FALLBACK_MODEL;
+export function rankEligibleChatModels(models: string[]): string[] {
+  const eligible = [
+    ...new Set(models.map(normalizeGeminiModelId).filter((id) => chatModelRank(id) >= 0)),
+  ];
   eligible.sort((a, b) => {
     const sd = chatModelRank(b) - chatModelRank(a);
     if (sd) return sd;
     return cmpVersionDesc(a, b);
   });
-  return eligible[0];
+  return eligible;
+}
+
+/**
+ * Best plain-text chat model (flash/pro); lite only if nothing else.
+ * Falls back to GEMINI_FALLBACK_MODEL if nothing matches.
+ */
+export function pickBestFlashModel(models: string[]): string {
+  const ranked = rankEligibleChatModels(models);
+  return ranked[0] ?? GEMINI_FALLBACK_MODEL;
 }
 
 /**

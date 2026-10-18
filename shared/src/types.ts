@@ -43,11 +43,14 @@ export interface EngineConfig {
    * Missing key = unknown (try JSON mode first).
    */
   geminiJsonModeByModel?: Record<string, boolean>;
+  /** modelId → epoch ms when daily quota recovers (Pacific midnight). */
+  geminiExhaustedModels?: Record<string, number>;
   deeplApiKey?: string;
   libreTranslateUrl?: string;
   libreTranslateApiKey?: string;
   onGeminiModelResolved?: (model: string) => void | Promise<void>;
   onGeminiJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
+  onGeminiModelExhausted?: (model: string, untilMs: number) => void | Promise<void>;
 }
 
 /** Per-channel prefs (languages / terms / source lang). Engine keys stay global. */
@@ -89,6 +92,13 @@ export interface AppSettings {
   dryRun: boolean;
   /** When true, do not re-translate languages that already have a localization. */
   skipExisting: boolean;
+  /**
+   * On Gemini quota exhaustion, try next model then DeepL → LibreTranslate.
+   * Default ON.
+   */
+  autoFallbackOnQuota: boolean;
+  /** Min interval between Gemini API calls (ms). Default 4000. */
+  geminiThrottleMs: number;
   /**
    * Defaults used when seeding a newly connected channel's settings.
    * Prefer per-channel settings for active translate jobs.
@@ -137,6 +147,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultSourceLanguage: 'en',
   dryRun: true,
   skipExisting: true,
+  autoFallbackOnQuota: true,
+  geminiThrottleMs: 4000,
 };
 
 export interface JobLogEntry {

@@ -14,6 +14,7 @@ const ACTIVE_CHANNEL_KEY = 'activeChannelId';
 const CHANNEL_SETTINGS_KEY = 'channelSettings';
 const GEMINI_AUTO_MODEL_KEY = 'geminiAutoModel';
 const GEMINI_MODEL_CAPS_KEY = 'geminiModelCaps';
+const GEMINI_EXHAUSTED_KEY = 'geminiExhaustedModels';
 
 type GeminiModelCaps = Record<string, { jsonMode?: boolean }>;
 
@@ -179,4 +180,22 @@ export async function setGeminiModelJsonMode(model: string, jsonMode: boolean): 
   const caps = await getGeminiModelCaps();
   caps[model] = { ...caps[model], jsonMode };
   await chrome.storage.local.set({ [GEMINI_MODEL_CAPS_KEY]: caps });
+}
+
+/** modelId → epoch ms when quota recovers (Pacific midnight). */
+export async function getGeminiExhaustedModels(): Promise<Record<string, number>> {
+  const data = await chrome.storage.local.get(GEMINI_EXHAUSTED_KEY);
+  const raw = (data[GEMINI_EXHAUSTED_KEY] as Record<string, number> | undefined) ?? {};
+  const now = Date.now();
+  const out: Record<string, number> = {};
+  for (const [id, until] of Object.entries(raw)) {
+    if (typeof until === 'number' && until > now) out[id] = until;
+  }
+  return out;
+}
+
+export async function setGeminiModelExhausted(model: string, untilMs: number): Promise<void> {
+  const current = await getGeminiExhaustedModels();
+  current[model] = untilMs;
+  await chrome.storage.local.set({ [GEMINI_EXHAUSTED_KEY]: current });
 }

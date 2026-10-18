@@ -58,6 +58,20 @@
           LibreTranslate API key (optional)
           <input id="libreTranslateApiKey" type="password" autocomplete="off" />
         </label>
+        <h3 class="subhead">Fallback order</h3>
+        <p class="hint">
+          Gemini models (auto-ranked) → DeepL → LibreTranslate. When a Gemini model hits daily
+          quota, the next model is tried; then other engines if configured.
+        </p>
+        <label class="row">
+          <input id="autoFallbackOnQuota" type="checkbox" checked />
+          Auto-fallback on quota (default on)
+        </label>
+        <label>
+          Gemini throttle (ms between requests)
+          <input id="geminiThrottleMs" type="number" min="0" step="500" value="4000" />
+        </label>
+        <p class="hint">Default 4000 (~1 request / 4s) to stay under free-tier per-minute limits.</p>
       </section>
 
       <section>

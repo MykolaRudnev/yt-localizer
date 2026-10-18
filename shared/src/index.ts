@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './text.js';
 export * from './retry.js';
 export * from './errors.js';
+export * from './quota.js';
 export * from './langs.js';
 export * from './channels.js';
 export * from './youtube.js';

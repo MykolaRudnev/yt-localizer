@@ -4,6 +4,7 @@ import {
   classifyError,
   extractHttpStatus,
   isModelNotFoundError,
+  isQuotaExhaustedError,
   userFacingError,
 } from './errors.js';
 
@@ -26,9 +27,12 @@ describe('classifyError', () => {
   });
 
   it('marks daily quota 429 as fatal, rate-limit 429 as transient', () => {
-    expect(
-      classifyError(new Error('Gemini 429: RESOURCE_EXHAUSTED You exceeded your current quota')),
-    ).toBe('fatal');
+    const quota = new Error('Gemini 429: RESOURCE_EXHAUSTED You exceeded your current quota');
+    expect(classifyError(quota)).toBe('fatal');
+    expect(isQuotaExhaustedError(quota)).toBe(true);
+    expect(isQuotaExhaustedError(new Error('Gemini 429: Rate limit exceeded, retry later'))).toBe(
+      false,
+    );
     expect(classifyError(new Error('Gemini 429: Rate limit exceeded, retry later'))).toBe(
       'transient',
     );
