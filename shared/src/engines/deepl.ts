@@ -56,6 +56,7 @@ export function createDeeplEngine(apiKey: string): TranslationEngine {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body,
+          signal: options.signal,
         });
         if (!res.ok) {
           const err = await res.text();
@@ -64,7 +65,7 @@ export function createDeeplEngine(apiKey: string): TranslationEngine {
         const data = (await res.json()) as { translations: { text: string }[] };
         if (data.translations.length < 2) throw new Error('DeepL incomplete response');
         return data.translations.map((t) => t.text);
-      }, { label: 'deepl' });
+      }, { label: 'deepl', signal: options.signal });
 
       let outTitle = restoreAfterTranslation(translated[0], prepared.maps);
       let outDesc = restoreAfterTranslation(translated[1], prepared.maps);

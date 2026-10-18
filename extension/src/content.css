@@ -74,6 +74,18 @@
   color: #f0e2a8;
 }
 
+#vt-modal-root .vt-banner-err {
+  background: #3a1c1c;
+  border: 1px solid #d97878;
+  color: #f0c8c8;
+}
+
+#vt-modal-root .vt-hint {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
 #vt-modal-root .vt-chips {
   display: flex;
   flex-wrap: wrap;
@@ -246,9 +258,40 @@
 }
 
 #vt-modal-root .vt-progress-list {
-  max-height: 200px;
+  max-height: 280px;
   overflow: auto;
   font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+#vt-modal-root .vt-lang-row {
+  display: grid;
+  grid-template-columns: 4.5rem 4.5rem 1fr;
+  gap: 0.35rem;
+  align-items: start;
+  padding: 0.2rem 0.15rem;
+  border-bottom: 1px solid #2a3542;
+}
+
+#vt-modal-root .vt-lang-code {
+  font-weight: 600;
+}
+
+#vt-modal-root .vt-lang-status.vt-muted,
+#vt-modal-root .vt-muted {
+  color: #8b9aab;
+}
+
+#vt-modal-root .vt-err-detail {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  color: #d97878;
+  max-height: 6rem;
+  overflow: auto;
 }
 
 #vt-modal-root .vt-ok {

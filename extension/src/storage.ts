@@ -5,6 +5,7 @@ const JOBS_KEY = 'jobLogs';
 const TOKEN_KEY = 'accessToken';
 const TOKEN_EXP_KEY = 'accessTokenExpiresAt';
 const ACCOUNT_KEY = 'accountEmail';
+const GEMINI_AUTO_MODEL_KEY = 'geminiAutoModel';
 
 export async function getSettings(): Promise<AppSettings> {
   const data = await chrome.storage.local.get(SETTINGS_KEY);
@@ -56,4 +57,14 @@ export async function appendJobLog(entry: JobLogEntry): Promise<void> {
   const jobs = (data[JOBS_KEY] as JobLogEntry[] | undefined) ?? [];
   jobs.unshift(entry);
   await chrome.storage.local.set({ [JOBS_KEY]: jobs.slice(0, 50) });
+}
+
+export async function getGeminiAutoModel(): Promise<string | undefined> {
+  const data = await chrome.storage.local.get(GEMINI_AUTO_MODEL_KEY);
+  const v = data[GEMINI_AUTO_MODEL_KEY] as string | undefined;
+  return v?.trim() || undefined;
+}
+
+export async function setGeminiAutoModel(model: string): Promise<void> {
+  await chrome.storage.local.set({ [GEMINI_AUTO_MODEL_KEY]: model });
 }

@@ -72,6 +72,19 @@ label.row {
   gap: 0.5rem;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: -0.35rem 0 0.85rem;
+}
+
+.row-actions select {
+  flex: 1;
+  min-width: 12rem;
+}
+
 input,
 select,
 textarea {

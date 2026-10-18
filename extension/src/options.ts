@@ -1,3 +1,4 @@
+import { listGeminiModels } from '@shared/engines/gemini';
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types';
 import languagesData from '../../languages.json';
 
@@ -50,6 +51,7 @@ function readForm(selected: Set<string>, lastUsed: string[]): AppSettings {
     lastUsedLanguages: lastUsed.length ? lastUsed : [...selected],
     engine: ($('engine') as HTMLSelectElement).value as AppSettings['engine'],
     geminiApiKey: ($('geminiApiKey') as HTMLInputElement).value.trim(),
+    geminiModel: ($('geminiModel') as HTMLInputElement).value.trim(),
     deeplApiKey: ($('deeplApiKey') as HTMLInputElement).value.trim(),
     libreTranslateUrl: ($('libreTranslateUrl') as HTMLInputElement).value.trim(),
     libreTranslateApiKey: ($('libreTranslateApiKey') as HTMLInputElement).value.trim(),
@@ -71,6 +73,7 @@ function fillForm(s: AppSettings) {
   ($('oauthClientId') as HTMLInputElement).value = s.oauthClientId;
   ($('engine') as HTMLSelectElement).value = s.engine;
   ($('geminiApiKey') as HTMLInputElement).value = s.geminiApiKey;
+  ($('geminiModel') as HTMLInputElement).value = s.geminiModel ?? '';
   ($('deeplApiKey') as HTMLInputElement).value = s.deeplApiKey;
   ($('libreTranslateUrl') as HTMLInputElement).value = s.libreTranslateUrl;
   ($('libreTranslateApiKey') as HTMLInputElement).value = s.libreTranslateApiKey;
@@ -81,6 +84,28 @@ function fillForm(s: AppSettings) {
   ($('protectedTerms') as HTMLTextAreaElement).value = s.protectedTerms.join('\n');
   ($('dryRun') as HTMLInputElement).checked = s.dryRun;
   ($('skipExisting') as HTMLInputElement).checked = s.skipExisting;
+}
+
+function fillModelSelect(models: string[], current: string) {
+  const sel = $('geminiModelSelect') as HTMLSelectElement;
+  const list = $('geminiModelList') as HTMLDataListElement;
+  sel.innerHTML = '';
+  list.innerHTML = '';
+  const auto = document.createElement('option');
+  auto.value = '';
+  auto.textContent = 'Auto (newest flash)';
+  sel.append(auto);
+  for (const id of models) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    if (id === current) opt.selected = true;
+    sel.append(opt);
+    const d = document.createElement('option');
+    d.value = id;
+    list.append(d);
+  }
+  if (!current) auto.selected = true;
 }
 
 async function main() {
@@ -121,6 +146,30 @@ async function main() {
       }
       renderLangList(selected, ($('langSearch') as HTMLInputElement).value);
     });
+  });
+
+  $('geminiModelSelect').addEventListener('change', () => {
+    ($('geminiModel') as HTMLInputElement).value = (
+      $('geminiModelSelect') as HTMLSelectElement
+    ).value;
+  });
+
+  $('loadGeminiModels').addEventListener('click', async () => {
+    const key = ($('geminiApiKey') as HTMLInputElement).value.trim();
+    const hint = $('geminiModelHint');
+    if (!key) {
+      hint.textContent = 'Enter a Gemini API key first.';
+      return;
+    }
+    hint.textContent = 'Loading models…';
+    try {
+      const models = await listGeminiModels(key);
+      const current = ($('geminiModel') as HTMLInputElement).value.trim();
+      fillModelSelect(models, current);
+      hint.textContent = `${models.length} models with generateContent. Pick one or leave Auto.`;
+    } catch (err) {
+      hint.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
   });
 
   $('save').addEventListener('click', async () => {

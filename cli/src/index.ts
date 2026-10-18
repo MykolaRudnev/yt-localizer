@@ -19,6 +19,7 @@ const SECRETS = resolve(__dirname, '../../../.cli-secrets.json');
 
 type Secrets = {
   geminiApiKey?: string;
+  geminiModel?: string;
   deeplApiKey?: string;
   libreTranslateUrl?: string;
   oauthClientId?: string;
@@ -166,6 +167,7 @@ async function main() {
     {
       engine,
       geminiApiKey: secrets.geminiApiKey ?? '',
+      geminiModel: secrets.geminiModel ?? '',
       deeplApiKey: secrets.deeplApiKey ?? '',
       libreTranslateUrl: secrets.libreTranslateUrl ?? 'http://localhost:5000',
       libreTranslateApiKey: '',

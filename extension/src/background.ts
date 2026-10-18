@@ -7,10 +7,18 @@ import {
   updateLocalizations,
 } from '@shared/youtube';
 import { getAuthState, getValidAccessToken, launchOAuth, logout } from './oauth';
-import { appendJobLog, getSettings, patchSettings, saveSettings } from './storage';
+import {
+  appendJobLog,
+  getGeminiAutoModel,
+  getSettings,
+  patchSettings,
+  saveSettings,
+  setGeminiAutoModel,
+} from './storage';
 
 type Msg =
   | { type: 'START_TRANSLATE'; videoId: string; languages?: string[]; skipExisting?: boolean }
+  | { type: 'STOP_TRANSLATE' }
   | { type: 'PUBLISH'; videoId: string; localizations: LocalizationResult[] }
   | { type: 'FETCH_VIDEO_META'; videoId: string }
   | { type: 'GET_SETTINGS' }
@@ -19,6 +27,9 @@ type Msg =
   | { type: 'LOGIN' }
   | { type: 'LOGOUT' }
   | { type: 'OPEN_OPTIONS' };
+
+/** Active job abort — STOP_TRANSLATE cancels in-flight requests. */
+let activeJobAbort: AbortController | null = null;
 
 chrome.runtime.onInstalled.addListener(async () => {
   const data = await chrome.storage.local.get('settings');
@@ -63,6 +74,9 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       return fetchVideoMeta(message.videoId);
     case 'START_TRANSLATE':
       return startTranslate(message.videoId, tabId, message.languages, message.skipExisting);
+    case 'STOP_TRANSLATE':
+      activeJobAbort?.abort();
+      return { ok: true };
     case 'PUBLISH':
       return publish(message.videoId, message.localizations);
     default:
@@ -99,113 +113,132 @@ async function startTranslate(
   languagesOverride?: string[],
   skipExistingOverride?: boolean,
 ) {
-  const settings = await getSettings();
-  const selected =
-    languagesOverride?.length ? languagesOverride : settings.selectedLanguages;
+  // Cancel any previous job
+  activeJobAbort?.abort();
+  const abort = new AbortController();
+  activeJobAbort = abort;
 
-  if (!selected.length) {
-    throw new Error('Select at least one language.');
-  }
-  if (settings.engine === 'gemini' && !settings.geminiApiKey) {
-    throw new Error('Gemini API key missing. Open Options to add it.');
-  }
-  if (settings.engine === 'deepl' && !settings.deeplApiKey) {
-    throw new Error('DeepL API key missing. Open Options to add it.');
-  }
+  try {
+    const settings = await getSettings();
+    const selected =
+      languagesOverride?.length ? languagesOverride : settings.selectedLanguages;
 
-  // Remember last selection
-  await patchSettings({
-    selectedLanguages: selected,
-    lastUsedLanguages: selected,
-  });
-
-  const token = await getValidAccessToken();
-  let video = await listVideo(videoId, token);
-
-  if (!video.snippet.defaultLanguage) {
-    if (settings.dryRun) {
-      video = {
-        ...video,
-        snippet: {
-          ...video.snippet,
-          defaultLanguage: settings.defaultSourceLanguage || 'en',
-        },
-      };
-      await notifyTab(tabId, {
-        type: 'VT_STATUS',
-        message: `Dry-run: would set defaultLanguage=${video.snippet.defaultLanguage}`,
-      });
-    } else {
-      video = await ensureDefaultLanguage(
-        video,
-        token,
-        settings.defaultSourceLanguage || 'en',
-      );
+    if (!selected.length) {
+      throw new Error('Select at least one language.');
     }
-  }
+    if (settings.engine === 'gemini' && !settings.geminiApiKey) {
+      throw new Error('Gemini API key missing. Open Options to add it.');
+    }
+    if (settings.engine === 'deepl' && !settings.deeplApiKey) {
+      throw new Error('DeepL API key missing. Open Options to add it.');
+    }
 
-  const skipExisting = skipExistingOverride ?? settings.skipExisting;
-  const langs = filterLanguagesForTranslate(selected, video.localizations, {
-    skipExisting,
-    defaultLanguage: video.snippet.defaultLanguage,
-  });
+    await patchSettings({
+      selectedLanguages: selected,
+      lastUsedLanguages: selected,
+    });
 
-  if (!langs.length) {
+    const token = await getValidAccessToken();
+    let video = await listVideo(videoId, token);
+
+    if (!video.snippet.defaultLanguage) {
+      if (settings.dryRun) {
+        video = {
+          ...video,
+          snippet: {
+            ...video.snippet,
+            defaultLanguage: settings.defaultSourceLanguage || 'en',
+          },
+        };
+        await notifyTab(tabId, {
+          type: 'VT_STATUS',
+          message: `Dry-run: would set defaultLanguage=${video.snippet.defaultLanguage}`,
+        });
+      } else {
+        video = await ensureDefaultLanguage(
+          video,
+          token,
+          settings.defaultSourceLanguage || 'en',
+        );
+      }
+    }
+
+    const skipExisting = skipExistingOverride ?? settings.skipExisting;
+    const langs = filterLanguagesForTranslate(selected, video.localizations, {
+      skipExisting,
+      defaultLanguage: video.snippet.defaultLanguage,
+    });
+
+    if (!langs.length) {
+      return {
+        ok: true,
+        dryRun: settings.dryRun,
+        source: {
+          title: video.snippet.title,
+          description: video.snippet.description,
+          defaultLanguage: video.snippet.defaultLanguage,
+        },
+        existingLocalizations: video.localizations ?? {},
+        results: [] as LocalizationResult[],
+        failed: [] as { language: string; error: string }[],
+        skippedAll: true,
+      };
+    }
+
+    const title = video.snippet.title;
+    const description = video.snippet.description;
+    const geminiAutoModel = await getGeminiAutoModel();
+
+    await notifyTab(tabId, {
+      type: 'VT_PROGRESS',
+      language: '',
+      index: 0,
+      total: langs.length,
+      status: 'running',
+      languages: langs,
+    });
+
+    const { ok, failed, stopReason, fatalSummary, fatalHint, pending } =
+      await translateAllLanguages(
+        title,
+        description,
+        langs,
+        { ...settings, geminiAutoModel },
+        async (info) => {
+          await notifyTab(tabId, { type: 'VT_PROGRESS', ...info, languages: langs });
+        },
+        {
+          abort,
+          onGeminiModelResolved: (model) => setGeminiAutoModel(model),
+        },
+      );
+
+    const entry: JobLogEntry = {
+      id: crypto.randomUUID(),
+      videoId,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      dryRun: settings.dryRun,
+      ok: ok.map((r) => r.language),
+      failed,
+    };
+    await appendJobLog(entry);
+
     return {
       ok: true,
       dryRun: settings.dryRun,
-      source: {
-        title: video.snippet.title,
-        description: video.snippet.description,
-        defaultLanguage: video.snippet.defaultLanguage,
-      },
+      source: { title, description, defaultLanguage: video.snippet.defaultLanguage },
       existingLocalizations: video.localizations ?? {},
-      results: [] as LocalizationResult[],
-      failed: [] as { language: string; error: string }[],
-      skippedAll: true,
+      results: ok,
+      failed,
+      pending,
+      stopReason,
+      fatalSummary,
+      fatalHint,
     };
+  } finally {
+    if (activeJobAbort === abort) activeJobAbort = null;
   }
-
-  const title = video.snippet.title;
-  const description = video.snippet.description;
-
-  await notifyTab(tabId, {
-    type: 'VT_PROGRESS',
-    language: '',
-    index: 0,
-    total: langs.length,
-    status: 'running',
-  });
-
-  const { ok, failed } = await translateAllLanguages(
-    title,
-    description,
-    langs,
-    settings,
-    async (info) => {
-      await notifyTab(tabId, { type: 'VT_PROGRESS', ...info });
-    },
-  );
-
-  const entry: JobLogEntry = {
-    id: crypto.randomUUID(),
-    videoId,
-    startedAt: new Date().toISOString(),
-    finishedAt: new Date().toISOString(),
-    dryRun: settings.dryRun,
-    ok: ok.map((r) => r.language),
-    failed,
-  };
-  await appendJobLog(entry);
-
-  return {
-    ok: true,
-    dryRun: settings.dryRun,
-    source: { title, description, defaultLanguage: video.snippet.defaultLanguage },
-    existingLocalizations: video.localizations ?? {},
-    results: ok,
-    failed,
-  };
 }
 
 async function publish(videoId: string, localizations: LocalizationResult[]) {
