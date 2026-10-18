@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/MykolaRudnevHUBER/yt-localizer/actions/workflows/ci.yml/badge.svg)](https://github.com/MykolaRudnevHUBER/yt-localizer/actions/workflows/ci.yml)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/mykolarudnev)
 
 **Translate YouTube titles & descriptions into official localizations — free, local, open source.**
 
@@ -133,6 +134,10 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 # Screenshots (Playwright + system Chrome; fake data only)
 npm run screenshots
 ```
+
+## Support
+
+If YT Localizer saved you time, you can [buy me a coffee](https://buymeacoffee.com/mykolarudnev).
 
 ## License
 
