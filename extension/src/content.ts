@@ -401,6 +401,7 @@ async function runTranslateFlow(
     errorDetail?: string,
     engine?: string,
     model?: string,
+    note?: string,
   ) => {
     const row = progressRoot.querySelector(`[data-lang="${CSS.escape(lang)}"]`) as HTMLElement | null;
     if (!row) return;
@@ -418,7 +419,7 @@ async function runTranslateFlow(
     label.textContent = short;
     label.className = `vt-lang-status vt-${status === 'ok' ? 'ok' : status === 'failed' ? 'err' : 'muted'}`;
     if (eng) {
-      const text = engineLabel(engine, model);
+      const text = note || engineLabel(engine, model);
       eng.textContent = text;
       eng.title = text;
     }
@@ -458,10 +459,14 @@ async function runTranslateFlow(
     fatalHint?: string;
     model?: string;
     engine?: string;
+    note?: string;
   }) => {
     if (msg.type === 'VT_PROGRESS') {
-      if (msg.model) activeModel = msg.model;
-      if (msg.engine) activeEngine = msg.engine;
+      // Job-level updates set the header engine; per-language must not switch it.
+      if (!msg.language) {
+        if (msg.model) activeModel = msg.model;
+        if (msg.engine) activeEngine = msg.engine;
+      }
       if (msg.languages?.length) {
         // ensure rows exist if background sends full list
         const list = progressRoot.querySelector('#vt-progress-list');
@@ -488,13 +493,13 @@ async function runTranslateFlow(
         }
       }
       if (msg.language && msg.status === 'running') {
-        setRow(msg.language, 'running', undefined, undefined, msg.engine, msg.model);
+        setRow(msg.language, 'running', undefined, undefined, msg.engine, msg.model, msg.note);
       }
       if (msg.language && msg.status === 'ok') {
-        setRow(msg.language, 'ok', undefined, undefined, msg.engine, msg.model);
+        setRow(msg.language, 'ok', undefined, undefined, msg.engine, msg.model, msg.note);
       }
       if (msg.language && msg.status === 'failed') {
-        setRow(msg.language, 'failed', msg.error, msg.errorDetail, msg.engine, msg.model);
+        setRow(msg.language, 'failed', msg.error, msg.errorDetail, msg.engine, msg.model, msg.note);
       }
     }
     if (msg.type === 'VT_STATUS') {

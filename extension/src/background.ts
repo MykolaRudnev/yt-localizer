@@ -4,6 +4,7 @@ import {
   selectChannelForVideo,
   tokenMatchesVideoChannel,
 } from '@shared/channels';
+import { preflightEngine } from '@shared/engines/index';
 import { filterLanguagesForTranslate } from '@shared/langs';
 import { translateAllLanguages } from '@shared/pipeline';
 import {
@@ -42,7 +43,9 @@ type Msg =
   | { type: 'PUBLISH'; videoId: string; localizations: LocalizationResult[] }
   | { type: 'FETCH_VIDEO_META'; videoId: string }
   | { type: 'GET_SETTINGS' }
+  | { type: 'SAVE_SETTINGS'; settings: typeof DEFAULT_SETTINGS }
   | { type: 'PATCH_SETTINGS'; partial: Partial<typeof DEFAULT_SETTINGS> }
+  | { type: 'TEST_ENGINE' }
   | { type: 'GET_CHANNEL_SETTINGS'; channelId: string }
   | { type: 'PATCH_CHANNEL_SETTINGS'; channelId: string; partial: Partial<ChannelSettings> }
   | { type: 'GET_AUTH_STATE' }
@@ -83,9 +86,42 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       return { ok: true };
     case 'GET_SETTINGS':
       return { ok: true, settings: await getSettings() };
+    case 'SAVE_SETTINGS': {
+      await saveSettings(message.settings);
+      return { ok: true, settings: await getSettings() };
+    }
     case 'PATCH_SETTINGS': {
       const settings = await patchSettings(message.partial);
       return { ok: true, settings };
+    }
+    case 'TEST_ENGINE': {
+      const settings = await getSettings();
+      try {
+        const result = await preflightEngine({
+          engine: settings.engine,
+          geminiApiKey: settings.geminiApiKey,
+          geminiModel: settings.geminiModel,
+          geminiAutoModel: await getGeminiAutoModel(),
+          geminiJsonModeByModel: await getGeminiJsonModeByModel(),
+          deeplApiKey: settings.deeplApiKey,
+          libreTranslateUrl: settings.libreTranslateUrl,
+          libreTranslateApiKey: settings.libreTranslateApiKey,
+        });
+        return {
+          ok: true,
+          engine: settings.engine,
+          model: result.model,
+          message: result.model
+            ? `OK — ${settings.engine} (model ${result.model})`
+            : `OK — ${settings.engine}`,
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          engine: settings.engine,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     }
     case 'GET_CHANNEL_SETTINGS':
       return {
@@ -376,6 +412,7 @@ async function startTranslate(
       total: langs.length,
       status: 'running',
       languages: langs,
+      engine: settings.engine,
     });
 
     const { ok, failed, stopReason, fatalSummary, fatalHint, pending } =

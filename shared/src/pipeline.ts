@@ -23,6 +23,7 @@ import {
   quotaStopSummary,
   type ExhaustionMap,
 } from './quota.js';
+import { trimSettingsKeys } from './settings.js';
 import type {
   AppSettings,
   EngineConfig,
@@ -47,6 +48,8 @@ export type ProgressCb = (info: {
   model?: string;
   /** Engine that handled / is handling this language. */
   engine?: EngineId;
+  /** e.g. "DeepL doesn't support hi → Gemini" for per-language fallback. */
+  note?: string;
 }) => void;
 
 export type TranslateJobResult = {
@@ -85,6 +88,20 @@ export type FallbackSlot =
   | { engine: 'deepl' }
   | { engine: 'libretranslate' };
 
+function engineDisplayName(id: EngineId): string {
+  if (id === 'gemini') return 'Gemini';
+  if (id === 'deepl') return 'DeepL';
+  return 'LibreTranslate';
+}
+
+/** Note when DeepL is skipped for an unsupported target and another engine is used. */
+export function deeplUnsupportedFallbackNote(
+  language: string,
+  usedEngine: EngineId,
+): string {
+  return `DeepL doesn't support ${language} → ${engineDisplayName(usedEngine)}`;
+}
+
 function buildEngineConfig(
   settings: JobSettings,
   hooks?: {
@@ -93,20 +110,27 @@ function buildEngineConfig(
     onGeminiModelExhausted?: (model: string, untilMs: number) => void | Promise<void>;
   },
 ): EngineConfig {
+  const trimmed = trimSettingsKeys({
+    geminiApiKey: settings.geminiApiKey,
+    deeplApiKey: settings.deeplApiKey,
+    libreTranslateUrl: settings.libreTranslateUrl,
+    libreTranslateApiKey: settings.libreTranslateApiKey,
+    geminiModel: settings.geminiModel,
+  });
   return {
     engine: settings.engine,
-    geminiApiKey: settings.geminiApiKey,
-    geminiModel: settings.geminiModel,
-    geminiAutoModel: settings.geminiAutoModel,
+    geminiApiKey: trimmed.geminiApiKey,
+    geminiModel: trimmed.geminiModel,
+    geminiAutoModel: settings.geminiAutoModel?.trim(),
     geminiJsonModeByModel: settings.geminiJsonModeByModel
       ? { ...settings.geminiJsonModeByModel }
       : undefined,
     geminiExhaustedModels: settings.geminiExhaustedModels
       ? { ...settings.geminiExhaustedModels }
       : undefined,
-    deeplApiKey: settings.deeplApiKey,
-    libreTranslateUrl: settings.libreTranslateUrl,
-    libreTranslateApiKey: settings.libreTranslateApiKey,
+    deeplApiKey: trimmed.deeplApiKey,
+    libreTranslateUrl: trimmed.libreTranslateUrl,
+    libreTranslateApiKey: trimmed.libreTranslateApiKey,
     onGeminiModelResolved: hooks?.onGeminiModelResolved,
     onGeminiJsonModeResolved: hooks?.onGeminiJsonModeResolved,
     onGeminiModelExhausted: hooks?.onGeminiModelExhausted,
@@ -296,16 +320,16 @@ export async function translateAllLanguages(
     await config.onGeminiModelExhausted?.(model, exhausted[model]);
   };
 
-  const hasGemini = Boolean(settings.geminiApiKey?.trim());
-  const hasDeepl = Boolean(settings.deeplApiKey?.trim());
-  const hasLibre = Boolean(settings.libreTranslateUrl?.trim());
+  const hasGemini = Boolean(config.geminiApiKey?.trim());
+  const hasDeepl = Boolean(config.deeplApiKey?.trim());
+  const hasLibre = Boolean(config.libreTranslateUrl?.trim());
 
   let geminiModels: string[] = [];
   if (hasGemini && (settings.engine === 'gemini' || autoFallback)) {
     let listed = opts?.geminiModelList;
     if (!listed) {
       try {
-        listed = await listGeminiModels(settings.geminiApiKey!, signal);
+        listed = await listGeminiModels(config.geminiApiKey!, signal);
       } catch {
         listed = settings.geminiAutoModel
           ? [settings.geminiAutoModel]
@@ -315,7 +339,7 @@ export async function translateAllLanguages(
     // Include exhausted models in the chain; slotUsable skips them at runtime.
     geminiModels = buildGeminiModelFallbackList(
       listed,
-      settings.geminiModel,
+      config.geminiModel,
       {},
       nowMs,
     );
@@ -346,6 +370,7 @@ export async function translateAllLanguages(
       stopReason: 'fatal',
       fatalSummary: face.summary,
       fatalHint: face.hint,
+      engine: settings.engine,
     });
     return {
       ok: [],
@@ -362,10 +387,24 @@ export async function translateAllLanguages(
       s.engine === 'gemini' && !isExhausted(exhausted, s.model, nowMs),
   );
   let resolvedModel = firstGemini?.model;
-  let activeEngine: EngineId = slots[0].engine;
+  /** Primary engine for the job (header); per-language may still fall back. */
+  let activeEngine: EngineId = settings.engine;
+  const primaryEngine = settings.engine;
+
+  // Announce primary immediately so the progress header is never "empty"/Gemini by default.
+  onProgress?.({
+    language: '',
+    index: 0,
+    total: languages.length,
+    status: 'running',
+    model: resolvedModel,
+    engine: primaryEngine,
+  });
 
   if (!opts?.skipPreflight) {
     let preflightOk = false;
+    let lastPreflightErr: unknown;
+    let lastPreflightSlot: FallbackSlot | undefined;
     for (const slot of slots) {
       if (slot.engine === 'gemini' && isExhausted(exhausted, slot.model, nowMs)) continue;
       const slotConfig = configForSlot(config, slot);
@@ -383,7 +422,7 @@ export async function translateAllLanguages(
           total: languages.length,
           status: 'running',
           model: resolvedModel,
-          engine: slot.engine,
+          engine: activeEngine,
         });
         break;
       } catch (err) {
@@ -395,11 +434,13 @@ export async function translateAllLanguages(
             pending: [...languages],
           };
         }
-        if (autoFallback && slot.engine === 'gemini' && isQuotaExhaustedError(err)) {
-          await markModelExhausted(slot.model);
+        lastPreflightErr = err;
+        lastPreflightSlot = slot;
+        // Auto-fallback only for quota-exhausted — never hide auth/config errors.
+        if (autoFallback && isQuotaExhaustedError(err)) {
+          if (slot.engine === 'gemini') await markModelExhausted(slot.model);
           continue;
         }
-        if (autoFallback) continue;
         const face = userFacingError(err);
         const detail = err instanceof Error ? err.message : String(err);
         onProgress?.({
@@ -426,8 +467,14 @@ export async function translateAllLanguages(
       }
     }
     if (!preflightOk) {
-      const reset = earliestResetMs(exhausted, nowMs);
-      const face = quotaStopSummary(0, languages.length, reset, nowMs);
+      const face = lastPreflightErr
+        ? userFacingError(lastPreflightErr)
+        : quotaStopSummary(
+            0,
+            languages.length,
+            earliestResetMs(exhausted, nowMs),
+            nowMs,
+          );
       onProgress?.({
         language: '',
         index: 0,
@@ -436,6 +483,7 @@ export async function translateAllLanguages(
         stopReason: 'fatal',
         fatalSummary: face.summary,
         fatalHint: face.hint,
+        engine: lastPreflightSlot?.engine ?? primaryEngine,
       });
       return {
         ok: [],
@@ -446,15 +494,6 @@ export async function translateAllLanguages(
         pending: [...languages],
       };
     }
-  } else {
-    onProgress?.({
-      language: '',
-      index: 0,
-      total: languages.length,
-      status: 'running',
-      model: resolvedModel,
-      engine: activeEngine,
-    });
   }
 
   const options: TranslateOptions = {
@@ -498,14 +537,24 @@ export async function translateAllLanguages(
     let lastErr: unknown;
     let usedEngine: EngineId | undefined;
     let usedModel: string | undefined;
+    let skippedDeeplUnsupported = false;
 
     for (const slot of slots) {
-      if (!slotUsable(slot, language, exhausted, nowMs)) continue;
+      if (!slotUsable(slot, language, exhausted, nowMs)) {
+        if (slot.engine === 'deepl' && !deeplSupports(language)) {
+          skippedDeeplUnsupported = true;
+        }
+        continue;
+      }
 
       usedEngine = slot.engine;
       usedModel = slot.engine === 'gemini' ? slot.model : undefined;
-      activeEngine = slot.engine;
       if (usedModel) resolvedModel = usedModel;
+
+      const note =
+        skippedDeeplUnsupported && slot.engine !== 'deepl'
+          ? deeplUnsupportedFallbackNote(language, slot.engine)
+          : undefined;
 
       onProgress?.({
         language,
@@ -514,6 +563,7 @@ export async function translateAllLanguages(
         status: 'running',
         model: usedModel ?? resolvedModel,
         engine: slot.engine,
+        note,
       });
 
       try {
@@ -538,6 +588,7 @@ export async function translateAllLanguages(
           status: 'ok',
           model: usedModel ?? resolvedModel,
           engine: slot.engine,
+          note,
         });
         langOk = true;
         break;
@@ -550,12 +601,11 @@ export async function translateAllLanguages(
         }
         lastErr = err;
 
-        if (autoFallback && slot.engine === 'gemini' && isQuotaExhaustedError(err)) {
-          await markModelExhausted(slot.model);
+        // Auto-fallback only for quota-exhausted (Gemini model or DeepL 456).
+        if (autoFallback && isQuotaExhaustedError(err)) {
+          if (slot.engine === 'gemini') await markModelExhausted(slot.model);
           continue;
         }
-
-        if (autoFallback) continue;
         break;
       }
     }
@@ -595,7 +645,8 @@ export async function translateAllLanguages(
       engine: usedEngine,
     });
 
-    if (!autoFallback && kind === 'fatal') {
+    // Auth/config fatals stop the job; quota fatals already handled above when no slots left.
+    if (kind === 'fatal' && !(autoFallback && isQuotaExhaustedError(lastErr))) {
       stopReason = 'fatal';
       fatalSummary = face.summary;
       fatalHint = face.hint;

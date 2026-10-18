@@ -37,14 +37,16 @@ export function isJsonModeUnsupportedError(err: unknown): boolean {
   return /JSON mode|responseMimeType|responseSchema/i.test(msg);
 }
 
-/** Daily / per-model quota (not short rate-limit). Pipeline may switch models when auto-fallback is on. */
+/** Daily / per-model quota (not short rate-limit). Pipeline may switch models/engines when auto-fallback is on. */
 export function isQuotaExhaustedError(err: unknown): boolean {
   const status = extractHttpStatus(err);
   const msg = err instanceof Error ? err.message : String(err);
-  return (
-    status === 429 &&
-    /quota|RESOURCE_EXHAUSTED|daily|exceeded your current quota/i.test(msg)
-  );
+  // DeepL Free/Pro: HTTP 456 = Quota exceeded
+  if (status === 456) return true;
+  if (status === 429 && /quota|RESOURCE_EXHAUSTED|daily|exceeded your current quota/i.test(msg)) {
+    return true;
+  }
+  return /Quota exceeded/i.test(msg);
 }
 
 /**
@@ -82,18 +84,45 @@ export function classifyError(err: unknown): ErrorKind {
   return 'transient';
 }
 
+function engineFromErrorMessage(msg: string): string | undefined {
+  if (/^DeepL\b/i.test(msg) || /\bDeepL\b/i.test(msg)) return 'DeepL';
+  if (/^Gemini\b/i.test(msg) || /\bGemini\b/i.test(msg)) return 'Gemini';
+  if (/LibreTranslate/i.test(msg)) return 'LibreTranslate';
+  return undefined;
+}
+
 export function userFacingError(err: unknown): { summary: string; hint: string } {
   const msg = err instanceof Error ? err.message : String(err);
   const status = extractHttpStatus(err);
+  const engine = engineFromErrorMessage(msg);
 
+  if (engine === 'DeepL' && (status === 401 || status === 403)) {
+    return {
+      summary: `DeepL ${status}`,
+      hint: 'DeepL key invalid - check Options; Free keys end with :fx',
+    };
+  }
+  if (engine === 'DeepL' && (status === 400 || status === undefined)) {
+    const network =
+      /network|fetch failed|Failed to fetch|CORS|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(msg);
+    return {
+      summary: status !== undefined ? `DeepL ${status}` : 'DeepL request failed',
+      hint: network
+        ? 'DeepL network/CORS error - check connectivity and Options key, then Retry.'
+        : 'DeepL key invalid - check Options; Free keys end with :fx',
+    };
+  }
   if (
     status === 401 ||
     status === 403 ||
     /API_KEY_INVALID|api.?key.*(?:invalid|not valid)|(?:invalid|not valid).*api.?key/i.test(msg)
   ) {
     return {
-      summary: 'Invalid API key',
-      hint: 'Open Options and paste a valid Gemini (or engine) API key, then Save.',
+      summary: status !== undefined ? `${engine ?? 'Engine'} ${status}` : 'Invalid API key',
+      hint:
+        engine === 'DeepL'
+          ? 'DeepL key invalid - check Options; Free keys end with :fx'
+          : 'Open Options and paste a valid Gemini (or engine) API key, then Save.',
     };
   }
   if (isModelNotFoundError(err)) {
@@ -102,9 +131,12 @@ export function userFacingError(err: unknown): { summary: string; hint: string }
       hint: 'Open Options → Model, click Load models, pick a flash model (or leave Auto), then Save.',
     };
   }
-  if (status === 429 && /quota|RESOURCE_EXHAUSTED|daily/i.test(msg)) {
+  if (isQuotaExhaustedError(err)) {
     return {
-      summary: 'API quota exhausted',
+      summary:
+        status !== undefined
+          ? `${engine ?? 'API'} ${status}: quota exhausted`
+          : 'API quota exhausted',
       hint: 'Daily quota is used up. Wait until reset, or use another API key / project.',
     };
   }
@@ -118,6 +150,12 @@ export function userFacingError(err: unknown): { summary: string; hint: string }
     return {
       summary: 'Translation service error',
       hint: 'The API had a temporary failure. Retry in a bit.',
+    };
+  }
+  if (engine && status !== undefined) {
+    return {
+      summary: `${engine} ${status}`,
+      hint: 'Check Options (API key / model) and Retry.',
     };
   }
   return {

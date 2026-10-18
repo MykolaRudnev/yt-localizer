@@ -1,5 +1,7 @@
 import { listGeminiModels } from '@shared/engines/gemini';
-import { DEFAULT_SETTINGS, type AppSettings, type ChannelSettings } from '@shared/types';
+import { preflightEngine } from '@shared/engines/index';
+import { normalizeAppSettings } from '@shared/settings';
+import type { AppSettings, ChannelSettings } from '@shared/types';
 import languagesData from '../../languages.json';
 
 type LangFile = {
@@ -20,7 +22,9 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 async function loadGlobal(): Promise<AppSettings> {
   const stored = await chrome.storage.local.get('settings');
-  return { ...DEFAULT_SETTINGS, ...(stored.settings as Partial<AppSettings> | undefined) };
+  return normalizeAppSettings(
+    (stored.settings as Partial<AppSettings> | undefined) ?? {},
+  );
 }
 
 function renderLangList(selected: Set<string>, filter: string) {
@@ -52,17 +56,16 @@ function updateCount(selected: Set<string>) {
   $('selectedCount').textContent = `${selected.size} selected`;
 }
 
+/** Read Options form; always includes `engine` and trimmed API keys. */
 function readGlobalForm(): AppSettings {
-  // Preserve language defaults from storage when saving global-only fields.
-  return {
-    ...DEFAULT_SETTINGS,
+  return normalizeAppSettings({
     engine: ($('engine') as HTMLSelectElement).value as AppSettings['engine'],
-    geminiApiKey: ($('geminiApiKey') as HTMLInputElement).value.trim(),
-    geminiModel: ($('geminiModel') as HTMLInputElement).value.trim(),
-    deeplApiKey: ($('deeplApiKey') as HTMLInputElement).value.trim(),
-    libreTranslateUrl: ($('libreTranslateUrl') as HTMLInputElement).value.trim(),
-    libreTranslateApiKey: ($('libreTranslateApiKey') as HTMLInputElement).value.trim(),
-    oauthClientId: ($('oauthClientId') as HTMLInputElement).value.trim(),
+    geminiApiKey: ($('geminiApiKey') as HTMLInputElement).value,
+    geminiModel: ($('geminiModel') as HTMLInputElement).value,
+    deeplApiKey: ($('deeplApiKey') as HTMLInputElement).value,
+    libreTranslateUrl: ($('libreTranslateUrl') as HTMLInputElement).value,
+    libreTranslateApiKey: ($('libreTranslateApiKey') as HTMLInputElement).value,
+    oauthClientId: ($('oauthClientId') as HTMLInputElement).value,
     titleOver100: ($('titleOver100') as HTMLSelectElement).value as AppSettings['titleOver100'],
     hashtagMode: ($('hashtagMode') as HTMLSelectElement).value as AppSettings['hashtagMode'],
     chapterMode: ($('chapterMode') as HTMLSelectElement).value as AppSettings['chapterMode'],
@@ -73,7 +76,7 @@ function readGlobalForm(): AppSettings {
       0,
       Number(($('geminiThrottleMs') as HTMLInputElement).value) || 4000,
     ),
-  };
+  });
 }
 
 function fillGlobalForm(s: AppSettings) {
@@ -250,6 +253,29 @@ async function main() {
     }
   });
 
+  $('testEngine').addEventListener('click', async () => {
+    const form = readGlobalForm();
+    const out = $('engineTestResult');
+    out.textContent = `Testing ${form.engine}…`;
+    try {
+      const result = await preflightEngine({
+        engine: form.engine,
+        geminiApiKey: form.geminiApiKey,
+        geminiModel: form.geminiModel,
+        deeplApiKey: form.deeplApiKey,
+        libreTranslateUrl: form.libreTranslateUrl,
+        libreTranslateApiKey: form.libreTranslateApiKey,
+      });
+      out.textContent = result.model
+        ? `OK — ${form.engine} (model ${result.model})`
+        : `OK — ${form.engine}`;
+    } catch (err) {
+      out.textContent = `Failed — ${form.engine}: ${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+  });
+
   $('save').addEventListener('click', async () => {
     const prev = await loadGlobal();
     const next = {
@@ -274,8 +300,17 @@ async function main() {
       next.defaultSourceLanguage = channelSettings.defaultSourceLanguage;
     }
 
-    await chrome.storage.local.set({ settings: next });
-    $('status').textContent = 'Saved.';
+    // Save via background so GET_SETTINGS / jobs always see the fresh value (incl. engine).
+    const saved = (await chrome.runtime.sendMessage({
+      type: 'SAVE_SETTINGS',
+      settings: next,
+    })) as { ok: boolean; settings?: AppSettings; error?: string };
+    if (!saved?.ok) {
+      $('status').textContent = saved?.error ?? 'Save failed';
+      return;
+    }
+    if (saved.settings) fillGlobalForm(saved.settings);
+    $('status').textContent = `Saved (engine=${saved.settings?.engine ?? next.engine}).`;
     setTimeout(() => {
       $('status').textContent = '';
     }, 2000);
