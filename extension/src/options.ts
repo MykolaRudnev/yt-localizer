@@ -99,6 +99,7 @@ function fillGlobalForm(s: AppSettings) {
 function fillChannelForm(s: ChannelSettings) {
   ($('defaultSourceLanguage') as HTMLInputElement).value = s.defaultSourceLanguage;
   ($('protectedTerms') as HTMLTextAreaElement).value = s.protectedTerms.join('\n');
+  ($('autoPublish') as HTMLInputElement).checked = s.autoPublish === true;
 }
 
 function readChannelForm(selected: Set<string>, lastUsed: string[]): ChannelSettings {
@@ -111,7 +112,24 @@ function readChannelForm(selected: Set<string>, lastUsed: string[]): ChannelSett
       .filter(Boolean),
     defaultSourceLanguage:
       ($('defaultSourceLanguage') as HTMLInputElement).value.trim() || 'en',
+    autoPublish: ($('autoPublish') as HTMLInputElement).checked,
   };
+}
+
+async function refreshCacheStats() {
+  const el = $('cacheStats');
+  try {
+    const res = (await chrome.runtime.sendMessage({
+      type: 'GET_TRANSLATION_CACHE_STATS',
+    })) as { ok?: boolean; videos?: number; entries?: number };
+    if (res?.ok) {
+      el.textContent = `${res.entries ?? 0} cached translations across ${res.videos ?? 0} videos (LRU cap 200 videos).`;
+    } else {
+      el.textContent = 'Could not read cache stats.';
+    }
+  } catch {
+    el.textContent = 'Could not read cache stats.';
+  }
 }
 
 function fillModelSelect(models: string[], current: string) {
@@ -274,6 +292,36 @@ async function main() {
         err instanceof Error ? err.message : String(err)
       }`;
     }
+  });
+
+  await refreshCacheStats();
+  $('clearCache').addEventListener('click', async () => {
+    if (!confirm('Clear all cached translations? You may re-use free quota on the next run.')) {
+      return;
+    }
+    await chrome.runtime.sendMessage({ type: 'CLEAR_TRANSLATION_CACHE' });
+    await refreshCacheStats();
+    $('status').textContent = 'Translation cache cleared.';
+    setTimeout(() => {
+      $('status').textContent = '';
+    }, 2000);
+  });
+
+  $('autoPublish').addEventListener('change', async () => {
+    const cb = $('autoPublish') as HTMLInputElement;
+    if (!cb.checked) return;
+    const ack = (await chrome.runtime.sendMessage({
+      type: 'GET_AUTO_PUBLISH_ACK',
+    })) as { ok?: boolean; acked?: boolean };
+    if (ack?.acked) return;
+    const ok = confirm(
+      'Auto-publish writes translations to YouTube as they finish (in batches). Dry-run must be OFF. Continue?',
+    );
+    if (!ok) {
+      cb.checked = false;
+      return;
+    }
+    await chrome.runtime.sendMessage({ type: 'ACK_AUTO_PUBLISH' });
   });
 
   $('save').addEventListener('click', async () => {

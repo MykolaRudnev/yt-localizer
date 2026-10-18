@@ -110,7 +110,17 @@
             Protected terms (one per line; channel name is added automatically on connect)
             <textarea id="protectedTerms" rows="4"></textarea>
           </label>
+          <label class="row">
+            <input id="autoPublish" type="checkbox" />
+            Auto-publish (writes translations to YouTube in batches as they finish; OFF by default)
+          </label>
         </div>
+      </section>
+
+      <section>
+        <h2>Translation cache</h2>
+        <p class="hint" id="cacheStats">Loading…</p>
+        <button type="button" id="clearCache">Clear translation cache</button>
       </section>
 
       <section>

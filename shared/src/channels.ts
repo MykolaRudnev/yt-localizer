@@ -59,6 +59,7 @@ export function seedChannelSettings(
     protectedTerms: [...(defaults.protectedTerms ?? DEFAULT_CHANNEL_SETTINGS.protectedTerms)],
     defaultSourceLanguage:
       defaults.defaultSourceLanguage ?? DEFAULT_CHANNEL_SETTINGS.defaultSourceLanguage,
+    autoPublish: defaults.autoPublish ?? DEFAULT_CHANNEL_SETTINGS.autoPublish ?? false,
   };
   const title = channelTitle.trim();
   if (title && !base.protectedTerms.some((t) => t.toLowerCase() === title.toLowerCase())) {
@@ -80,6 +81,11 @@ export function mergeSettingsForChannel(
     protectedTerms: channel.protectedTerms,
     defaultSourceLanguage: channel.defaultSourceLanguage,
   };
+}
+
+/** Effective auto-publish for a channel (default OFF). */
+export function channelAutoPublish(channel: ChannelSettings | null | undefined): boolean {
+  return channel?.autoPublish === true;
 }
 
 export function publicChannelView(

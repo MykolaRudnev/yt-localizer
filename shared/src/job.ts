@@ -13,6 +13,10 @@ export interface LangJobState {
   errorDetail?: string;
   title?: string;
   description?: string;
+  /** Reused from translation cache (no API call). */
+  cached?: boolean;
+  /** Already written to YouTube (auto-publish or manual). */
+  published?: boolean;
 }
 
 export interface TranslateJob {
@@ -26,6 +30,8 @@ export interface TranslateJob {
   langStates: Record<string, LangJobState>;
   dryRun: boolean;
   skipExisting: boolean;
+  /** Snapshot of channel auto-publish for this job. */
+  autoPublish?: boolean;
   phase: JobPhase;
   startedAt: number;
   finishedAt?: number;
@@ -47,6 +53,7 @@ export type JobAction =
       languages: string[];
       dryRun: boolean;
       skipExisting: boolean;
+      autoPublish?: boolean;
       channelId?: string;
       sourceTitle?: string;
       sourceDescription?: string;
@@ -65,6 +72,8 @@ export type JobAction =
       errorDetail?: string;
       title?: string;
       description?: string;
+      cached?: boolean;
+      published?: boolean;
       fatalSummary?: string;
       fatalHint?: string;
       stopReason?: string | null;
@@ -110,6 +119,7 @@ export function reduceJob(state: TranslateJob | null, action: JobAction): Transl
         langStates,
         dryRun: action.dryRun,
         skipExisting: action.skipExisting,
+        autoPublish: action.autoPublish,
         phase: 'running',
         startedAt: action.startedAt ?? Date.now(),
         engine: action.engine,
@@ -138,6 +148,8 @@ export function reduceJob(state: TranslateJob | null, action: JobAction): Transl
           errorDetail: action.errorDetail ?? prev.errorDetail,
           title: action.title ?? prev.title,
           description: action.description ?? prev.description,
+          cached: action.cached ?? prev.cached,
+          published: action.published ?? prev.published,
         };
       }
       return recount(next);
@@ -216,6 +228,20 @@ export function jobFailed(job: TranslateJob): { language: string; error: string 
     }
   }
   return out;
+}
+
+/** Successful translations not yet published (for auto-publish flush). */
+export function jobUnpublished(job: TranslateJob): LocalizationResult[] {
+  return jobResults(job).filter((r) => !job.langStates[r.language]?.published);
+}
+
+export function markJobPublished(job: TranslateJob, languages: string[]): TranslateJob {
+  const langStates = { ...job.langStates };
+  for (const code of languages) {
+    const prev = langStates[code];
+    if (prev) langStates[code] = { ...prev, published: true };
+  }
+  return { ...job, langStates };
 }
 
 export function jobPercent(job: TranslateJob): number {
