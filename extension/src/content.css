@@ -218,6 +218,12 @@
   color: #f0c8c8;
 }
 
+#vt-modal-root .vt-banner-live {
+  background: #1a2e22;
+  border: 1px solid #3d9a6a;
+  color: #b8e6c8;
+}
+
 #vt-modal-root .vt-hint {
   margin-top: 0.35rem;
   font-size: 0.85rem;

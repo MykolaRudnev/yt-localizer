@@ -9,3 +9,4 @@ export * from './youtube.js';
 export * from './engines/index.js';
 export * from './pipeline.js';
 export * from './job.js';
+export * from './cache.js';

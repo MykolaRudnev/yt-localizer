@@ -1,4 +1,11 @@
 import {
+  cachedToResult,
+  hashFromTranslateOptions,
+  lookupCachedTranslation,
+  shouldAutoPublishFlush,
+} from '@shared/cache';
+import {
+  channelAutoPublish,
   mergeSettingsForChannel,
   orderChannelsForProbe,
   selectChannelForVideo,
@@ -9,6 +16,8 @@ import {
   badgeForJob,
   jobFailed,
   jobResults,
+  jobUnpublished,
+  markJobPublished,
   reduceJob,
   type TranslateJob,
 } from '@shared/job';
@@ -28,20 +37,27 @@ import {
 import { addChannel, getAuthState, getValidAccessToken, logout } from './oauth';
 import {
   appendJobLog,
+  cacheTranslation,
+  clearTranslationCache,
   getActiveChannelId,
   getActiveJob,
+  getAutoPublishAcked,
   getChannelSettings,
   getChannels,
   getGeminiAutoModel,
   getGeminiExhaustedModels,
   getGeminiJsonModeByModel,
   getSettings,
+  getTranslationCache,
+  getTranslationCacheStats,
   getWidgetPos,
+  markTranslationsPublished,
   patchChannelSettings,
   patchSettings,
   saveSettings,
   setActiveChannelId,
   setActiveJob,
+  setAutoPublishAcked,
   setGeminiAutoModel,
   setGeminiModelExhausted,
   setGeminiModelJsonMode,
@@ -71,7 +87,11 @@ type Msg =
   | { type: 'SET_ACTIVE_CHANNEL'; channelId: string }
   | { type: 'CONNECT_CHANNEL'; expectedChannelId?: string }
   | { type: 'LOGOUT'; channelId?: string }
-  | { type: 'OPEN_OPTIONS' };
+  | { type: 'OPEN_OPTIONS' }
+  | { type: 'GET_TRANSLATION_CACHE_STATS' }
+  | { type: 'CLEAR_TRANSLATION_CACHE' }
+  | { type: 'GET_AUTO_PUBLISH_ACK' }
+  | { type: 'ACK_AUTO_PUBLISH' };
 
 const KEEP_ALIVE_ALARM = 'vt-keepalive';
 const JOB_PORT = 'vt-job';
@@ -273,6 +293,16 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       return { ok: true };
     case 'PUBLISH':
       return publish(message.videoId, message.localizations);
+    case 'GET_TRANSLATION_CACHE_STATS':
+      return { ok: true, ...(await getTranslationCacheStats()) };
+    case 'CLEAR_TRANSLATION_CACHE':
+      await clearTranslationCache();
+      return { ok: true, videos: 0, entries: 0 };
+    case 'GET_AUTO_PUBLISH_ACK':
+      return { ok: true, acked: await getAutoPublishAcked() };
+    case 'ACK_AUTO_PUBLISH':
+      await setAutoPublishAcked(true);
+      return { ok: true };
     default:
       return { ok: false, error: 'Unknown message' };
   }
@@ -513,6 +543,18 @@ async function startTranslate(
 
   const title = video.snippet.title;
   const description = video.snippet.description;
+  const autoPublish = channelAutoPublish(channelPrefs) && !settings.dryRun;
+  const sourceHash = hashFromTranslateOptions(
+    title,
+    description,
+    {
+      protectedTerms: settings.protectedTerms,
+      hashtagMode: settings.hashtagMode,
+      chapterMode: settings.chapterMode,
+      titleOver100: settings.titleOver100,
+    },
+    settings.defaultSourceLanguage || 'en',
+  );
 
   let job = reduceJob(null, {
     type: 'create',
@@ -522,6 +564,7 @@ async function startTranslate(
     languages: langs,
     dryRun: settings.dryRun,
     skipExisting,
+    autoPublish,
     sourceTitle: title,
     sourceDescription: description,
     defaultLanguage: video.snippet.defaultLanguage,
@@ -532,6 +575,45 @@ async function startTranslate(
   const geminiAutoModel = await getGeminiAutoModel();
   const geminiJsonModeByModel = await getGeminiJsonModeByModel();
   const geminiExhaustedModels = await getGeminiExhaustedModels();
+
+  let lastAutoFlushAt = Date.now();
+
+  const flushAutoPublish = async (force: boolean) => {
+    const cur = memoryJob;
+    if (!cur || cur.id !== job!.id || !cur.autoPublish || cur.dryRun) return;
+    const pending = jobUnpublished(cur);
+    if (
+      !shouldAutoPublishFlush({
+        unpublishedCount: pending.length,
+        lastFlushAt: lastAutoFlushAt,
+        now: Date.now(),
+        force,
+      })
+    ) {
+      return;
+    }
+    try {
+      await publishLocalizations(videoId, pending, { clearJob: false });
+      lastAutoFlushAt = Date.now();
+      const after = memoryJob;
+      if (after && after.id === job!.id) {
+        await persistJob(markJobPublished(after, pending.map((p) => p.language)));
+      }
+      await markTranslationsPublished(
+        videoId,
+        pending.map((p) => p.language),
+      );
+    } catch (err) {
+      const after = memoryJob;
+      if (!after || after.id !== job!.id) return;
+      const next = reduceJob(after, {
+        type: 'progress',
+        fatalSummary: `Auto-publish failed: ${err instanceof Error ? err.message : String(err)}`,
+        fatalHint: 'Translations are saved — use Publish in the preview to retry.',
+      });
+      if (next) await persistJob(next);
+    }
+  };
 
   runningPromise = (async () => {
     try {
@@ -561,11 +643,10 @@ async function startTranslate(
             fatalSummary: info.fatalSummary,
             fatalHint: info.fatalHint,
             stopReason: info.stopReason,
-            title: undefined,
-            description: undefined,
+            title: info.title,
+            description: info.description,
+            cached: info.cached,
           });
-          // Attach result text when ok — pipeline doesn't pass title/desc in progress;
-          // finish step merges full results.
           if (next) await persistJob(next);
         },
         {
@@ -575,24 +656,68 @@ async function startTranslate(
             setGeminiModelJsonMode(model, jsonMode),
           onGeminiModelExhausted: (model, untilMs) =>
             setGeminiModelExhausted(model, untilMs),
+          lookupCache: async (language) => {
+            const store = await getTranslationCache();
+            const hit = lookupCachedTranslation(store, videoId, language, sourceHash);
+            return hit ? cachedToResult(hit) : null;
+          },
+          onLanguageOk: async (result, meta) => {
+            const prevStore = await getTranslationCache();
+            const prevHit = lookupCachedTranslation(
+              prevStore,
+              videoId,
+              result.language,
+              sourceHash,
+            );
+            await cacheTranslation(videoId, {
+              language: result.language,
+              sourceHash,
+              title: result.title,
+              description: result.description,
+              published: prevHit?.published,
+            });
+            // Ensure job has text even if progress raced
+            const cur = memoryJob;
+            if (cur && cur.id === job!.id) {
+              let next = reduceJob(cur, {
+                type: 'progress',
+                language: result.language,
+                status: 'ok',
+                title: result.title,
+                description: result.description,
+                cached: meta.cached,
+                note: meta.cached ? 'cached' : undefined,
+                published: prevHit?.published === true,
+              });
+              if (next && prevHit?.published) {
+                next = markJobPublished(next, [result.language]);
+              }
+              if (next) await persistJob(next);
+            }
+            await flushAutoPublish(false);
+          },
         },
       );
 
       const cur = memoryJob;
       if (!cur || cur.id !== job!.id) return;
 
+      // Final auto-publish flush before finishing (survives stop/fatal/circuit).
+      await flushAutoPublish(true);
+
       let phase: 'done' | 'failed' | 'stopped' = 'done';
       if (stopReason === 'aborted') phase = 'stopped';
       else if (stopReason === 'fatal' || stopReason === 'circuit') {
-        phase = ok.length ? 'done' : 'failed';
-      } else if (!ok.length && failed.length) {
+        phase = ok.length || jobResults(memoryJob ?? cur).length ? 'done' : 'failed';
+      } else if (!ok.length && failed.length && !jobResults(memoryJob ?? cur).length) {
         phase = 'failed';
       }
 
-      const finished = reduceJob(cur, {
+      const latest = memoryJob ?? cur;
+      const finished = reduceJob(latest, {
         type: 'finish',
         phase,
-        results: ok,
+        results: ok.length ? ok : jobResults(latest),
         failed,
         stopReason,
         fatalSummary,
@@ -606,16 +731,24 @@ async function startTranslate(
         startedAt: new Date(cur.startedAt).toISOString(),
         finishedAt: new Date().toISOString(),
         dryRun: settings.dryRun,
-        ok: ok.map((r) => r.language),
+        ok: (ok.length ? ok : jobResults(finished!)).map((r) => r.language),
         failed,
       };
       await appendJobLog(entry);
     } catch (err) {
       const cur = memoryJob;
       if (!cur || cur.id !== job!.id) return;
-      const finished = reduceJob(cur, {
+      try {
+        await flushAutoPublish(true);
+      } catch {
+        /* already surfaced */
+      }
+      const partial = jobResults(memoryJob ?? cur);
+      const finished = reduceJob(memoryJob ?? cur, {
         type: 'finish',
-        phase: 'failed',
+        phase: partial.length ? 'done' : 'failed',
+        results: partial,
+        failed: jobFailed(memoryJob ?? cur),
         fatalSummary: err instanceof Error ? err.message : String(err),
         stopReason: 'fatal',
       });
@@ -637,7 +770,23 @@ async function publish(videoId: string, localizations: LocalizationResult[]) {
       'Dry-run is ON — Publish is disabled. Turn off dry-run to publish.',
     );
   }
+  return publishLocalizations(videoId, localizations, { clearJob: true });
+}
 
+/**
+ * Merge-publish localizations: always re-fetch current video before write so we
+ * never delete other languages or clobber snippet fields.
+ */
+async function publishLocalizations(
+  videoId: string,
+  localizations: LocalizationResult[],
+  opts: { clearJob: boolean },
+) {
+  if (!localizations.length) {
+    return { ok: true, published: [] as string[] };
+  }
+
+  const settings = await getSettings();
   const access = await resolveVideoAccess(videoId);
   if (!access.ok) throw new Error(access.error);
 
@@ -657,6 +806,7 @@ async function publish(videoId: string, localizations: LocalizationResult[]) {
       merged.defaultSourceLanguage || 'en',
     );
   }
+  // Re-fetch immediately before write to merge with latest remote localizations.
   const fresh = await listVideo(videoId, token);
   if (fresh.snippet.channelId !== channelId) {
     throw new Error('Refusing to publish: video channel no longer matches connected token.');
@@ -670,20 +820,24 @@ async function publish(videoId: string, localizations: LocalizationResult[]) {
   const startedAt = new Date().toISOString();
   try {
     await updateLocalizations(fresh, token, map);
+    const published = localizations.map((l) => l.language);
     const entry: JobLogEntry = {
       id: crypto.randomUUID(),
       videoId,
       startedAt,
       finishedAt: new Date().toISOString(),
       dryRun: false,
-      ok: localizations.map((l) => l.language),
+      ok: published,
       failed: [],
     };
     await appendJobLog(entry);
-    // Clear finished job after successful publish
+    await markTranslationsPublished(videoId, published);
     const job = memoryJob ?? (await getActiveJob());
-    if (job?.videoId === videoId) await persistJob(null);
-    return { ok: true, published: localizations.map((l) => l.language) };
+    if (job?.videoId === videoId) {
+      if (opts.clearJob) await persistJob(null);
+      else await persistJob(markJobPublished(job, published));
+    }
+    return { ok: true, published };
   } catch (err) {
     const entry: JobLogEntry = {
       id: crypto.randomUUID(),

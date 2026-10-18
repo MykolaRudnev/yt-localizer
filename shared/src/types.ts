@@ -60,6 +60,11 @@ export interface ChannelSettings {
   lastUsedLanguages: string[];
   protectedTerms: string[];
   defaultSourceLanguage: string;
+  /**
+   * When true and dry-run is OFF, publish localizations in batches as languages finish.
+   * Default OFF.
+   */
+  autoPublish?: boolean;
 }
 
 /** Connected YouTube channel + OAuth tokens (stored in chrome.storage.local). */
@@ -128,6 +133,7 @@ export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
   lastUsedLanguages: [...TOP10_DEFAULT],
   protectedTerms: ['Veil of Veles'],
   defaultSourceLanguage: 'en',
+  autoPublish: false,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {

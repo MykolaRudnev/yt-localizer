@@ -50,6 +50,11 @@ export type ProgressCb = (info: {
   engine?: EngineId;
   /** e.g. "DeepL doesn't support hi → Gemini" for per-language fallback. */
   note?: string;
+  /** Present when status is ok (must persist immediately so errors can't wipe results). */
+  title?: string;
+  description?: string;
+  /** True when result came from the translation cache. */
+  cached?: boolean;
 }) => void;
 
 export type TranslateJobResult = {
@@ -277,6 +282,13 @@ export async function translateAllLanguages(
     /** Override listed Gemini models (tests). */
     geminiModelList?: string[];
     nowMs?: number;
+    /** Reuse a cached translation when source hash matches (avoids API call). */
+    lookupCache?: (language: string) => LocalizationResult | null | Promise<LocalizationResult | null>;
+    /** Called after each successful language (live or cached) for durable persist. */
+    onLanguageOk?: (
+      result: LocalizationResult,
+      meta: { cached: boolean },
+    ) => void | Promise<void>;
   },
 ): Promise<TranslateJobResult> {
   const signal = opts?.signal ?? opts?.abort?.signal;
@@ -533,6 +545,28 @@ export async function translateAllLanguages(
     }
 
     const language = languages[i];
+
+    // Cache hit — no API call
+    const cached = opts?.lookupCache ? await opts.lookupCache(language) : null;
+    if (cached) {
+      ok.push(cached);
+      breaker.recordSuccess();
+      onProgress?.({
+        language,
+        index: i,
+        total,
+        status: 'ok',
+        title: cached.title,
+        description: cached.description,
+        cached: true,
+        note: 'cached',
+        model: resolvedModel,
+        engine: activeEngine,
+      });
+      await opts?.onLanguageOk?.(cached, { cached: true });
+      continue;
+    }
+
     let langOk = false;
     let lastErr: unknown;
     let usedEngine: EngineId | undefined;
@@ -579,17 +613,25 @@ export async function translateAllLanguages(
         );
         if (slot.engine === 'gemini') markGeminiDone(throttleState);
         if (config.geminiAutoModel) resolvedModel = config.geminiAutoModel;
-        ok.push({ language, title: result.title, description: result.description });
+        const loc: LocalizationResult = {
+          language,
+          title: result.title,
+          description: result.description,
+        };
+        ok.push(loc);
         breaker.recordSuccess();
         onProgress?.({
           language,
           index: i,
           total,
           status: 'ok',
+          title: loc.title,
+          description: loc.description,
           model: usedModel ?? resolvedModel,
           engine: slot.engine,
           note,
         });
+        await opts?.onLanguageOk?.(loc, { cached: false });
         langOk = true;
         break;
       } catch (err) {

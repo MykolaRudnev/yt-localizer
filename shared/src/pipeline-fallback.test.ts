@@ -300,4 +300,42 @@ describe('translateAllLanguages quota fallback', () => {
     expect(result.ok.map((r) => r.language)).toEqual(['ja']);
     expect(result.failed).toEqual([]);
   });
+
+  it('reuses lookupCache hits without calling the engine', async () => {
+    const fetchMock = vi.fn(async () => geminiOkJson('live', 'live'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const okMeta: { language: string; cached: boolean }[] = [];
+    const result = await translateAllLanguages(
+      'Hello',
+      'World',
+      ['es', 'de'],
+      baseSettings,
+      undefined,
+      {
+        skipPreflight: true,
+        geminiModelList: ['gemini-2.5-flash'],
+        lookupCache: (lang) =>
+          lang === 'es'
+            ? { language: 'es', title: 'Cached', description: 'From cache' }
+            : null,
+        onLanguageOk: (r, meta) => {
+          okMeta.push({ language: r.language, cached: meta.cached });
+        },
+      },
+    );
+
+    expect(result.ok).toEqual([
+      { language: 'es', title: 'Cached', description: 'From cache' },
+      { language: 'de', title: 'live', description: 'live' },
+    ]);
+    expect(okMeta).toEqual([
+      { language: 'es', cached: true },
+      { language: 'de', cached: false },
+    ]);
+    // Cache hit skips generateContent; only the miss should call the API.
+    expect(fetchMock).toHaveBeenCalled();
+    const urls = (fetchMock.mock.calls as unknown as [string][]).map((c) => String(c[0]));
+    expect(urls.filter((u) => u.includes(':generateContent'))).toHaveLength(1);
+  });
 });

@@ -5,6 +5,8 @@ import {
   jobFailed,
   jobPercent,
   jobResults,
+  jobUnpublished,
+  markJobPublished,
   reduceJob,
   shouldReopenExistingJob,
   type TranslateJob,
@@ -72,6 +74,44 @@ describe('reduceJob', () => {
     expect(jobResults(job)).toEqual([{ language: 'es', title: 'T', description: 'D' }]);
     expect(jobFailed(job)).toEqual([{ language: 'de', error: 'quota' }]);
     expect(job.doneCount).toBe(2);
+  });
+
+  it('keeps partial ok results for preview after fatal/stop (titles stored on progress)', () => {
+    let job = createJob(['es', 'de', 'ja']);
+    job = reduceJob(job, {
+      type: 'progress',
+      language: 'es',
+      status: 'ok',
+      title: 'Hola',
+      description: 'Mundo',
+      cached: true,
+    })!;
+    job = reduceJob(job, {
+      type: 'progress',
+      language: 'de',
+      status: 'ok',
+      title: 'Hallo',
+      description: 'Welt',
+    })!;
+    // Fatal before ja — finish with whatever we have (simulate catch / circuit)
+    job = reduceJob(job, {
+      type: 'finish',
+      phase: 'done',
+      results: jobResults(job),
+      failed: [],
+      stopReason: 'fatal',
+      fatalSummary: 'API blew up',
+    })!;
+    expect(jobResults(job)).toEqual([
+      { language: 'es', title: 'Hola', description: 'Mundo' },
+      { language: 'de', title: 'Hallo', description: 'Welt' },
+    ]);
+    expect(job.langStates.es.cached).toBe(true);
+    expect(job.phase).toBe('done');
+    // Preview publishable = unpublished ok rows
+    expect(jobUnpublished(job)).toHaveLength(2);
+    job = markJobPublished(job, ['es']);
+    expect(jobUnpublished(job).map((r) => r.language)).toEqual(['de']);
   });
 });
 

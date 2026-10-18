@@ -6,6 +6,14 @@ import type {
   JobLogEntry,
 } from '@shared/types';
 import { seedChannelSettings } from '@shared/channels';
+import {
+  emptyTranslationCache,
+  markCachedPublished,
+  putCachedTranslation,
+  translationCacheStats,
+  type CachedTranslation,
+  type TranslationCacheStore,
+} from '@shared/cache';
 import { normalizeAppSettings, trimSettingsKeys } from '@shared/settings';
 
 const SETTINGS_KEY = 'settings';
@@ -18,6 +26,8 @@ const GEMINI_MODEL_CAPS_KEY = 'geminiModelCaps';
 const GEMINI_EXHAUSTED_KEY = 'geminiExhaustedModels';
 const ACTIVE_JOB_KEY = 'activeJob';
 const WIDGET_POS_KEY = 'vtWidgetPos';
+const TRANSLATION_CACHE_KEY = 'translationCache';
+const AUTO_PUBLISH_ACK_KEY = 'autoPublishAcked';
 
 /** Prefer session (cleared on browser restart); fall back to local. */
 async function jobStore(): Promise<typeof chrome.storage.session | typeof chrome.storage.local> {
@@ -252,4 +262,48 @@ export async function getWidgetPos(): Promise<WidgetPos | null> {
 
 export async function setWidgetPos(pos: WidgetPos): Promise<void> {
   await chrome.storage.local.set({ [WIDGET_POS_KEY]: pos });
+}
+
+export async function getTranslationCache(): Promise<TranslationCacheStore> {
+  const data = await chrome.storage.local.get(TRANSLATION_CACHE_KEY);
+  const raw = data[TRANSLATION_CACHE_KEY] as TranslationCacheStore | undefined;
+  if (!raw?.videos || typeof raw.videos !== 'object') return emptyTranslationCache();
+  return raw;
+}
+
+export async function saveTranslationCache(store: TranslationCacheStore): Promise<void> {
+  await chrome.storage.local.set({ [TRANSLATION_CACHE_KEY]: store });
+}
+
+export async function cacheTranslation(
+  videoId: string,
+  entry: Omit<CachedTranslation, 'touchedAt'> & { touchedAt?: number },
+): Promise<void> {
+  const store = await getTranslationCache();
+  await saveTranslationCache(putCachedTranslation(store, videoId, entry));
+}
+
+export async function markTranslationsPublished(
+  videoId: string,
+  languages: string[],
+): Promise<void> {
+  const store = await getTranslationCache();
+  await saveTranslationCache(markCachedPublished(store, videoId, languages));
+}
+
+export async function clearTranslationCache(): Promise<void> {
+  await chrome.storage.local.remove(TRANSLATION_CACHE_KEY);
+}
+
+export async function getTranslationCacheStats(): Promise<{ videos: number; entries: number }> {
+  return translationCacheStats(await getTranslationCache());
+}
+
+export async function getAutoPublishAcked(): Promise<boolean> {
+  const data = await chrome.storage.local.get(AUTO_PUBLISH_ACK_KEY);
+  return data[AUTO_PUBLISH_ACK_KEY] === true;
+}
+
+export async function setAutoPublishAcked(acked: boolean): Promise<void> {
+  await chrome.storage.local.set({ [AUTO_PUBLISH_ACK_KEY]: acked });
 }

@@ -470,6 +470,7 @@ async function openQuickModal() {
       channelSettings?: {
         selectedLanguages: string[];
         lastUsedLanguages: string[];
+        autoPublish?: boolean;
       };
     }>({ type: 'FETCH_VIDEO_META', videoId });
 
@@ -497,6 +498,7 @@ async function openQuickModal() {
     const selected = new Set(langSource);
     let skipExisting = settings.skipExisting;
     let dryRun = settings.dryRun;
+    let autoPublish = meta.channelSettings?.autoPublish === true;
     let searchQ = '';
 
     const start = async () => {
@@ -507,7 +509,11 @@ async function openQuickModal() {
         await sendMsg({
           type: 'PATCH_CHANNEL_SETTINGS',
           channelId: meta.channelId,
-          partial: { selectedLanguages: langs, lastUsedLanguages: langs },
+          partial: {
+            selectedLanguages: langs,
+            lastUsedLanguages: langs,
+            autoPublish,
+          },
         });
       }
       const res = await sendMsg<{ ok: boolean; error?: string; job?: TranslateJob; skippedAll?: boolean }>({
@@ -601,6 +607,11 @@ async function openQuickModal() {
       <div class="vt-banner vt-banner-dry" id="vt-dry-banner" style="display:${dryRun ? 'block' : 'none'}">
         Dry-run ON — preview only; Publish will stay disabled until you turn this off.
       </div>
+      <div class="vt-banner vt-banner-live" id="vt-auto-banner" style="display:${
+        autoPublish && !dryRun ? 'block' : 'none'
+      }">
+        Auto-publish ON — translations go live as they finish
+      </div>
       <div class="vt-chips" id="vt-presets">
         <button type="button" data-preset="top10" class="vt-chip">Top 10</button>
         <button type="button" data-preset="top20" class="vt-chip">Top 20</button>
@@ -623,6 +634,9 @@ async function openQuickModal() {
         <label class="vt-check"><input type="checkbox" id="vt-dry" ${
           dryRun ? 'checked' : ''
         }/> Dry-run</label>
+        <label class="vt-check"><input type="checkbox" id="vt-auto" ${
+          autoPublish ? 'checked' : ''
+        }/> Auto-publish</label>
       </div>
       <div class="vt-footer">
         <button type="button" id="vt-cancel">Cancel</button>
@@ -632,6 +646,11 @@ async function openQuickModal() {
     const grid = panel.querySelector('#vt-lang-grid') as HTMLElement;
     fillGrid(grid);
     updateChrome();
+
+    const syncAutoBanner = () => {
+      const banner = panel.querySelector('#vt-auto-banner') as HTMLElement;
+      banner.style.display = autoPublish && !dryRun ? 'block' : 'none';
+    };
 
     bindModalChrome({ root, onClose: close, onEnter: () => void start() });
     panel.querySelector('#vt-x')!.addEventListener('click', close);
@@ -672,6 +691,27 @@ async function openQuickModal() {
       await sendMsg({ type: 'PATCH_SETTINGS', partial: { dryRun } });
       const banner = panel.querySelector('#vt-dry-banner') as HTMLElement;
       banner.style.display = dryRun ? 'block' : 'none';
+      syncAutoBanner();
+    });
+
+    panel.querySelector('#vt-auto')!.addEventListener('change', async (e) => {
+      const cb = e.target as HTMLInputElement;
+      if (cb.checked) {
+        const ok = await confirmAutoPublish();
+        if (!ok) {
+          cb.checked = false;
+          return;
+        }
+      }
+      autoPublish = cb.checked;
+      if (meta.channelId) {
+        await sendMsg({
+          type: 'PATCH_CHANNEL_SETTINGS',
+          channelId: meta.channelId,
+          partial: { autoPublish },
+        });
+      }
+      syncAutoBanner();
     });
 
     panel.querySelector('#vt-go')!.addEventListener('click', () => void start());
@@ -683,6 +723,16 @@ async function openQuickModal() {
 }
 
 /* ---------- job progress / preview modal ---------- */
+
+async function confirmAutoPublish(): Promise<boolean> {
+  const ack = await sendMsg<{ ok: boolean; acked?: boolean }>({ type: 'GET_AUTO_PUBLISH_ACK' });
+  if (ack?.acked) return true;
+  const ok = window.confirm(
+    'Auto-publish writes translations to YouTube as they finish (in batches). Dry-run must be OFF. Continue?',
+  );
+  if (ok) await sendMsg({ type: 'ACK_AUTO_PUBLISH' });
+  return ok;
+}
 
 function engineLabel(engine?: string, model?: string): string {
   if (!engine) return '';
@@ -756,6 +806,11 @@ function buildProgressShell(root: HTMLElement, job: TranslateJob) {
           <div class="vt-progress-fill" style="width:${pct}%"></div>
         </div>
       </div>
+      ${
+        job.autoPublish && !job.dryRun
+          ? `<div class="vt-banner vt-banner-live">Auto-publish ON — translations go live as they finish</div>`
+          : ''
+      }
       ${headerMsg}
       <div id="vt-progress-list" class="vt-progress-list">${rows}</div>
       <div class="vt-footer sticky" id="vt-job-footer">
@@ -787,7 +842,11 @@ function langRowHtml(code: string, job: TranslateJob): string {
       : status === 'running'
         ? '…'
         : status === 'ok'
-          ? 'ok'
+          ? s?.published
+            ? 'live'
+            : s?.cached
+              ? 'cached'
+              : 'ok'
           : status === 'skipped'
             ? 'skip'
             : 'failed';
@@ -876,13 +935,16 @@ function paintPreview(
   failed: { language: string; error: string }[],
 ) {
   let dryRun = job.dryRun;
+  let autoPublish = job.autoPublish === true;
 
   const paint = () => {
     const tableRows = rows
       .map((r, i) => {
         const w = charWarning(r.title, r.description);
+        const st = job.langStates[r.language];
+        const badge = st?.published ? ' · live' : st?.cached ? ' · cached' : '';
         return `<tr data-i="${i}">
-          <td>${escapeHtml(r.language)}</td>
+          <td>${escapeHtml(r.language)}${escapeHtml(badge)}</td>
           <td>
             <input class="vt-title" value="${escapeAttr(r.title)}" />
             <div class="warn vt-title-warn" style="display:${w.titleOver ? 'block' : 'none'}">Title &gt; 100 (${r.title.length})</div>
@@ -900,10 +962,11 @@ function paintPreview(
       : '';
     const stopNote =
       job.phase === 'stopped'
-        ? 'Stopped. Successful translations below are still editable.'
-        : job.fatalSummary && job.phase === 'failed'
+        ? 'Stopped. Successful translations below are still editable / publishable.'
+        : job.fatalSummary
           ? job.fatalSummary
           : '';
+    const unpublished = rows.filter((r) => !job.langStates[r.language]?.published);
 
     root.dataset.mode = 'job';
     root.innerHTML = `
@@ -918,6 +981,11 @@ function paintPreview(
         <div class="vt-banner vt-banner-dry" style="display:${dryRun ? 'block' : 'none'}">
           Dry-run ON — Publish disabled. Uncheck below to enable publishing.
         </div>
+        <div class="vt-banner vt-banner-live" style="display:${
+          autoPublish && !dryRun ? 'block' : 'none'
+        }">
+          Auto-publish ON — translations go live as they finish
+        </div>
         ${stopNote ? `<div class="vt-banner vt-banner-err">${escapeHtml(stopNote)}</div>` : ''}
         <div class="vt-meta">
           Video: ${escapeHtml(job.videoId)} · Source: ${escapeHtml((job.sourceTitle ?? '').slice(0, 80))}
@@ -925,6 +993,9 @@ function paintPreview(
         </div>
         <label class="vt-check vt-dry-inline">
           <input type="checkbox" id="vt-dry-preview" ${dryRun ? 'checked' : ''}/> Dry-run (preview only)
+        </label>
+        <label class="vt-check vt-dry-inline">
+          <input type="checkbox" id="vt-auto-preview" ${autoPublish ? 'checked' : ''}/> Auto-publish
         </label>
         <div class="vt-table-wrap">
           <table>
@@ -940,8 +1011,8 @@ function paintPreview(
               : ''
           }
           <button type="button" class="primary" id="vt-publish" ${
-            dryRun || !rows.length ? 'disabled' : ''
-          }>Publish</button>
+            dryRun || !unpublished.length ? 'disabled' : ''
+          }>Publish${unpublished.length && unpublished.length < rows.length ? ` ${unpublished.length}` : ''}</button>
         </div>
       </div>`;
 
@@ -967,10 +1038,12 @@ function paintPreview(
       root.querySelectorAll('tr[data-i]').forEach((tr) => {
         const i = Number((tr as HTMLElement).dataset.i);
         const lang = rows[i].language;
+        if (job.langStates[lang]?.published) return;
         const title = (tr.querySelector('.vt-title') as HTMLInputElement).value;
         const description = (tr.querySelector('.vt-desc') as HTMLTextAreaElement).value;
         localizations.push({ language: lang, title, description });
       });
+      if (!localizations.length) return;
       const pubBtn = root.querySelector('#vt-publish') as HTMLButtonElement;
       pubBtn.disabled = true;
       pubBtn.textContent = 'Publishing…';
@@ -1015,6 +1088,25 @@ function paintPreview(
     root.querySelector('#vt-dry-preview')!.addEventListener('change', async (e) => {
       dryRun = (e.target as HTMLInputElement).checked;
       await sendMsg({ type: 'PATCH_SETTINGS', partial: { dryRun } });
+      paint();
+    });
+    root.querySelector('#vt-auto-preview')!.addEventListener('change', async (e) => {
+      const cb = e.target as HTMLInputElement;
+      if (cb.checked) {
+        const ok = await confirmAutoPublish();
+        if (!ok) {
+          cb.checked = false;
+          return;
+        }
+      }
+      autoPublish = cb.checked;
+      if (job.channelId) {
+        await sendMsg({
+          type: 'PATCH_CHANNEL_SETTINGS',
+          channelId: job.channelId,
+          partial: { autoPublish },
+        });
+      }
       paint();
     });
     root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
