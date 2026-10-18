@@ -14,7 +14,7 @@ Do this once on Mikki’s machine. No secrets belong in git.
 2. User type: **External**.
 3. App name: `VeilTranslate` (or similar). Support email: your Gmail.
 4. Publishing status: leave as **Testing**.
-5. **Test users** → add Mikki’s Google account (the one that owns the YouTube channel).
+5. **Test users** → add **every** Google account you will connect (each channel / Brand Account login). While the app stays in **Testing**, Google only allows listed test users — add each extra account before **Add channel** in the popup.
 6. Scopes: you can add manually later; the extension requests  
    `https://www.googleapis.com/auth/youtube.force-ssl` at runtime.
 
@@ -82,14 +82,21 @@ docker run -d -p 5000:5000 libretranslate/libretranslate
 
 Options → Engine **LibreTranslate**, URL `http://localhost:5000`.
 
-## 7. First dry-run on a test video
+## 7. Connect channels (multi-account)
 
-1. Options: select a few languages, **Dry-run ON** (default).
+1. Toolbar popup → **Add channel** → pick the Google account (or Brand Account) at Google’s chooser (`prompt=select_account`).
+2. Repeat for each channel. Tokens are stored per channel id in `chrome.storage.local` (never in git).
+3. Options → **Per-channel settings**: languages, protected terms (channel name is seeded automatically), default source language. Engine/API keys stay global.
+4. In Studio, the extension auto-selects the token for the video’s channel. If missing: *“This video belongs to …, connect it”*.
+
+## 8. First dry-run on a test video
+
+1. Options: select a few languages for that channel, **Dry-run ON** (default).
 2. Open an **unlisted** test video in Studio → **Translate**.
 3. Confirm preview looks good.
 4. Only then turn dry-run **off** and click **Publish** (Mikki OK required before real channel videos).
 
-## 8. CLI secrets (optional)
+## 9. CLI secrets (optional)
 
 ```bash
 cp .cli-secrets.example.json .cli-secrets.json

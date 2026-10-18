@@ -61,25 +61,42 @@
       </section>
 
       <section>
-        <h2>Languages <span id="selectedCount" class="count">0 selected</span></h2>
-        <div class="presets">
-          <button type="button" data-preset="top10">Top 10</button>
-          <button type="button" data-preset="top20">Top 20</button>
-          <button type="button" data-preset="top10rpm" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
-          <button type="button" data-preset="last">Last used</button>
-          <button type="button" data-preset="all">Select all</button>
-          <button type="button" data-preset="none">Clear</button>
+        <h2>Per-channel settings</h2>
+        <p class="hint">
+          Languages, protected terms, and default source language are stored per connected
+          channel. Connect channels from the toolbar popup first.
+        </p>
+        <label>
+          Channel
+          <select id="channelSelect">
+            <option value="">— connect a channel —</option>
+          </select>
+        </label>
+        <div id="channelSettingsPanel" class="hidden">
+          <h3 class="subhead">Languages <span id="selectedCount" class="count">0 selected</span></h3>
+          <div class="presets">
+            <button type="button" data-preset="top10">Top 10</button>
+            <button type="button" data-preset="top20">Top 20</button>
+            <button type="button" data-preset="top10rpm" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
+            <button type="button" data-preset="last">Last used</button>
+            <button type="button" data-preset="all">Select all</button>
+            <button type="button" data-preset="none">Clear</button>
+          </div>
+          <input id="langSearch" type="search" placeholder="Search languages…" />
+          <div id="langList" class="lang-list"></div>
+          <label>
+            Default source language
+            <input id="defaultSourceLanguage" type="text" maxlength="16" />
+          </label>
+          <label>
+            Protected terms (one per line; channel name is added automatically on connect)
+            <textarea id="protectedTerms" rows="4"></textarea>
+          </label>
         </div>
-        <input id="langSearch" type="search" placeholder="Search languages…" />
-        <div id="langList" class="lang-list"></div>
       </section>
 
       <section>
-        <h2>Translation options</h2>
-        <label>
-          Default source language
-          <input id="defaultSourceLanguage" type="text" maxlength="16" />
-        </label>
+        <h2>Global translation options</h2>
         <label>
           Title &gt; 100 chars
           <select id="titleOver100">
@@ -100,10 +117,6 @@
             <option value="translate_labels">Translate labels, keep timestamps</option>
             <option value="keep">Keep lines as is</option>
           </select>
-        </label>
-        <label>
-          Protected terms (one per line)
-          <textarea id="protectedTerms" rows="4"></textarea>
         </label>
         <label class="row">
           <input id="dryRun" type="checkbox" />

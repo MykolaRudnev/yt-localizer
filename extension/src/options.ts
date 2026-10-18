@@ -1,5 +1,5 @@
 import { listGeminiModels } from '@shared/engines/gemini';
-import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types';
+import { DEFAULT_SETTINGS, type AppSettings, type ChannelSettings } from '@shared/types';
 import languagesData from '../../languages.json';
 
 type LangFile = {
@@ -7,11 +7,18 @@ type LangFile = {
   languages: { code: string; name: string }[];
 };
 
+type ChannelView = {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+  email: string | null;
+};
+
 const data = languagesData as LangFile;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-async function load(): Promise<AppSettings> {
+async function loadGlobal(): Promise<AppSettings> {
   const stored = await chrome.storage.local.get('settings');
   return { ...DEFAULT_SETTINGS, ...(stored.settings as Partial<AppSettings> | undefined) };
 }
@@ -45,10 +52,10 @@ function updateCount(selected: Set<string>) {
   $('selectedCount').textContent = `${selected.size} selected`;
 }
 
-function readForm(selected: Set<string>, lastUsed: string[]): AppSettings {
+function readGlobalForm(): AppSettings {
+  // Preserve language defaults from storage when saving global-only fields.
   return {
-    selectedLanguages: [...selected],
-    lastUsedLanguages: lastUsed.length ? lastUsed : [...selected],
+    ...DEFAULT_SETTINGS,
     engine: ($('engine') as HTMLSelectElement).value as AppSettings['engine'],
     geminiApiKey: ($('geminiApiKey') as HTMLInputElement).value.trim(),
     geminiModel: ($('geminiModel') as HTMLInputElement).value.trim(),
@@ -59,17 +66,12 @@ function readForm(selected: Set<string>, lastUsed: string[]): AppSettings {
     titleOver100: ($('titleOver100') as HTMLSelectElement).value as AppSettings['titleOver100'],
     hashtagMode: ($('hashtagMode') as HTMLSelectElement).value as AppSettings['hashtagMode'],
     chapterMode: ($('chapterMode') as HTMLSelectElement).value as AppSettings['chapterMode'],
-    protectedTerms: ($('protectedTerms') as HTMLTextAreaElement).value
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean),
-    defaultSourceLanguage: ($('defaultSourceLanguage') as HTMLInputElement).value.trim() || 'en',
     dryRun: ($('dryRun') as HTMLInputElement).checked,
     skipExisting: ($('skipExisting') as HTMLInputElement).checked,
   };
 }
 
-function fillForm(s: AppSettings) {
+function fillGlobalForm(s: AppSettings) {
   ($('oauthClientId') as HTMLInputElement).value = s.oauthClientId;
   ($('engine') as HTMLSelectElement).value = s.engine;
   ($('geminiApiKey') as HTMLInputElement).value = s.geminiApiKey;
@@ -77,13 +79,29 @@ function fillForm(s: AppSettings) {
   ($('deeplApiKey') as HTMLInputElement).value = s.deeplApiKey;
   ($('libreTranslateUrl') as HTMLInputElement).value = s.libreTranslateUrl;
   ($('libreTranslateApiKey') as HTMLInputElement).value = s.libreTranslateApiKey;
-  ($('defaultSourceLanguage') as HTMLInputElement).value = s.defaultSourceLanguage;
   ($('titleOver100') as HTMLSelectElement).value = s.titleOver100;
   ($('hashtagMode') as HTMLSelectElement).value = s.hashtagMode;
   ($('chapterMode') as HTMLSelectElement).value = s.chapterMode;
-  ($('protectedTerms') as HTMLTextAreaElement).value = s.protectedTerms.join('\n');
   ($('dryRun') as HTMLInputElement).checked = s.dryRun;
   ($('skipExisting') as HTMLInputElement).checked = s.skipExisting;
+}
+
+function fillChannelForm(s: ChannelSettings) {
+  ($('defaultSourceLanguage') as HTMLInputElement).value = s.defaultSourceLanguage;
+  ($('protectedTerms') as HTMLTextAreaElement).value = s.protectedTerms.join('\n');
+}
+
+function readChannelForm(selected: Set<string>, lastUsed: string[]): ChannelSettings {
+  return {
+    selectedLanguages: [...selected],
+    lastUsedLanguages: lastUsed.length ? lastUsed : [...selected],
+    protectedTerms: ($('protectedTerms') as HTMLTextAreaElement).value
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    defaultSourceLanguage:
+      ($('defaultSourceLanguage') as HTMLInputElement).value.trim() || 'en',
+  };
 }
 
 function fillModelSelect(models: string[], current: string) {
@@ -109,21 +127,74 @@ function fillModelSelect(models: string[], current: string) {
 }
 
 async function main() {
-  const settings = await load();
-  const selected = new Set(
-    settings.selectedLanguages.length
-      ? settings.selectedLanguages
-      : (data.presets.top10?.codes ?? []),
-  );
-  let lastUsed = [...(settings.lastUsedLanguages?.length ? settings.lastUsedLanguages : selected)];
-  fillForm(settings);
-  renderLangList(selected, '');
+  const settings = await loadGlobal();
+  fillGlobalForm(settings);
+
+  const selected = new Set<string>();
+  let lastUsed: string[] = [];
+  let activeChannelId = '';
+
+  const auth = (await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATE' })) as {
+    ok: boolean;
+    channels?: ChannelView[];
+    activeChannelId?: string | null;
+  };
+  const channels = auth.channels ?? [];
+  const sel = $('channelSelect') as HTMLSelectElement;
+  sel.innerHTML = '';
+  if (!channels.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '— connect a channel in the popup —';
+    sel.append(opt);
+    $('channelSettingsPanel').classList.add('hidden');
+  } else {
+    for (const ch of channels) {
+      const opt = document.createElement('option');
+      opt.value = ch.id;
+      opt.textContent = ch.title + (ch.email ? ` (${ch.email})` : '');
+      sel.append(opt);
+    }
+    activeChannelId = auth.activeChannelId ?? channels[0].id;
+    sel.value = activeChannelId;
+    $('channelSettingsPanel').classList.remove('hidden');
+    const chRes = (await chrome.runtime.sendMessage({
+      type: 'GET_CHANNEL_SETTINGS',
+      channelId: activeChannelId,
+    })) as { ok: boolean; settings?: ChannelSettings };
+    if (chRes.settings) {
+      selected.clear();
+      chRes.settings.selectedLanguages.forEach((c) => selected.add(c));
+      lastUsed = [...(chRes.settings.lastUsedLanguages ?? selected)];
+      fillChannelForm(chRes.settings);
+      renderLangList(selected, '');
+    }
+  }
 
   try {
     $('redirectUri').textContent = chrome.identity.getRedirectURL();
   } catch {
     // ignore
   }
+
+  sel.addEventListener('change', async () => {
+    activeChannelId = sel.value;
+    if (!activeChannelId) {
+      $('channelSettingsPanel').classList.add('hidden');
+      return;
+    }
+    $('channelSettingsPanel').classList.remove('hidden');
+    const chRes = (await chrome.runtime.sendMessage({
+      type: 'GET_CHANNEL_SETTINGS',
+      channelId: activeChannelId,
+    })) as { ok: boolean; settings?: ChannelSettings };
+    if (!chRes.settings) return;
+    selected.clear();
+    chRes.settings.selectedLanguages.forEach((c) => selected.add(c));
+    lastUsed = [...(chRes.settings.lastUsedLanguages ?? selected)];
+    fillChannelForm(chRes.settings);
+    renderLangList(selected, ($('langSearch') as HTMLInputElement).value);
+  });
 
   $('langSearch').addEventListener('input', (e) => {
     renderLangList(selected, (e.target as HTMLInputElement).value);
@@ -173,8 +244,29 @@ async function main() {
   });
 
   $('save').addEventListener('click', async () => {
-    lastUsed = [...selected];
-    const next = readForm(selected, lastUsed);
+    const prev = await loadGlobal();
+    const next = {
+      ...readGlobalForm(),
+      selectedLanguages: prev.selectedLanguages,
+      lastUsedLanguages: prev.lastUsedLanguages,
+      protectedTerms: prev.protectedTerms,
+      defaultSourceLanguage: prev.defaultSourceLanguage,
+    };
+
+    if (activeChannelId) {
+      lastUsed = [...selected];
+      const channelSettings = readChannelForm(selected, lastUsed);
+      await chrome.runtime.sendMessage({
+        type: 'PATCH_CHANNEL_SETTINGS',
+        channelId: activeChannelId,
+        partial: channelSettings,
+      });
+      next.selectedLanguages = channelSettings.selectedLanguages;
+      next.lastUsedLanguages = channelSettings.lastUsedLanguages;
+      next.protectedTerms = channelSettings.protectedTerms;
+      next.defaultSourceLanguage = channelSettings.defaultSourceLanguage;
+    }
+
     await chrome.storage.local.set({ settings: next });
     $('status').textContent = 'Saved.';
     setTimeout(() => {

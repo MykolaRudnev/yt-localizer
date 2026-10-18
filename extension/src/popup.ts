@@ -1,5 +1,13 @@
 import type { AppSettings } from '@shared/types';
 
+type ChannelView = {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+  email: string | null;
+  hasToken: boolean;
+};
+
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function load() {
@@ -11,7 +19,8 @@ async function load() {
     chrome.runtime.sendMessage({ type: 'GET_AUTH_STATE' }) as Promise<{
       ok: boolean;
       loggedIn?: boolean;
-      email?: string | null;
+      channels?: ChannelView[];
+      activeChannelId?: string | null;
     }>,
   ]);
 
@@ -19,8 +28,8 @@ async function load() {
   if (!settings) return;
 
   renderChecklist(settings);
-  renderAuth(!!authRes.loggedIn, authRes.email ?? null);
-  renderStatus(settings);
+  await renderChannels(authRes.channels ?? [], authRes.activeChannelId ?? null);
+  renderStatus(settings, authRes.channels ?? [], authRes.activeChannelId ?? null);
 
   ($('dryRun') as HTMLInputElement).checked = settings.dryRun;
   $('dryRun').onchange = async () => {
@@ -38,6 +47,27 @@ async function load() {
   $('setupLink').onclick = (e) => {
     e.preventDefault();
     void chrome.tabs.create({ url: chrome.runtime.getURL('SETUP.md') });
+  };
+
+  $('addChannelBtn').onclick = async () => {
+    const btn = $('addChannelBtn') as HTMLButtonElement;
+    btn.disabled = true;
+    try {
+      const res = (await chrome.runtime.sendMessage({ type: 'ADD_CHANNEL' })) as {
+        ok: boolean;
+        error?: string;
+        channels?: ChannelView[];
+        activeChannelId?: string | null;
+      };
+      if (!res?.ok) {
+        alert(res?.error ?? 'Add channel failed');
+        return;
+      }
+      await renderChannels(res.channels ?? [], res.activeChannelId ?? null);
+      renderStatus(settings, res.channels ?? [], res.activeChannelId ?? null);
+    } finally {
+      btn.disabled = false;
+    }
   };
 }
 
@@ -80,35 +110,84 @@ function renderChecklist(settings: AppSettings) {
   box.classList.toggle('hidden', !anyMissing);
 }
 
-function renderAuth(loggedIn: boolean, email: string | null) {
-  const box = $('authBox');
-  if (loggedIn) {
-    box.innerHTML = `
-      <div class="email">${email ? escapeHtml(email) : 'Signed in with Google'}</div>
-      <button type="button" class="linkish" id="logoutBtn">Sign out</button>`;
-    $('logoutBtn').onclick = async () => {
-      await chrome.runtime.sendMessage({ type: 'LOGOUT' });
-      renderAuth(false, null);
-    };
-  } else {
-    box.innerHTML = `<button type="button" id="loginBtn" class="primary">Login with Google</button>`;
-    $('loginBtn').onclick = async () => {
-      const res = (await chrome.runtime.sendMessage({ type: 'LOGIN' })) as {
+async function renderChannels(channels: ChannelView[], activeChannelId: string | null) {
+  const box = $('channelList');
+  box.innerHTML = '';
+
+  if (!channels.length) {
+    box.innerHTML = `<p class="muted">No channels connected yet.</p>`;
+    return;
+  }
+
+  for (const ch of channels) {
+    const row = document.createElement('div');
+    row.className = 'channel-row' + (ch.id === activeChannelId ? ' active' : '');
+    const thumb = ch.thumbnailUrl
+      ? `<img class="avatar" src="${escapeAttr(ch.thumbnailUrl)}" alt="" width="28" height="28" />`
+      : `<span class="avatar placeholder"></span>`;
+    row.innerHTML = `
+      <label class="channel-main">
+        <input type="radio" name="activeChannel" value="${escapeAttr(ch.id)}" ${
+          ch.id === activeChannelId ? 'checked' : ''
+        } />
+        ${thumb}
+        <span class="channel-text">
+          <span class="channel-title">${escapeHtml(ch.title)}</span>
+          <span class="channel-email">${escapeHtml(ch.email ?? ch.id)}</span>
+        </span>
+      </label>
+      <button type="button" class="linkish remove" data-id="${escapeAttr(ch.id)}">Remove</button>`;
+
+    row.querySelector('input')!.addEventListener('change', async () => {
+      const res = (await chrome.runtime.sendMessage({
+        type: 'SET_ACTIVE_CHANNEL',
+        channelId: ch.id,
+      })) as {
         ok: boolean;
-        error?: string;
-        loggedIn?: boolean;
-        email?: string | null;
+        channels?: ChannelView[];
+        activeChannelId?: string | null;
       };
-      if (!res?.ok) {
-        alert(res?.error ?? 'Login failed');
-        return;
+      if (res?.ok) {
+        await renderChannels(res.channels ?? [], res.activeChannelId ?? null);
+        const settingsRes = (await chrome.runtime.sendMessage({
+          type: 'GET_SETTINGS',
+        })) as { settings?: AppSettings };
+        if (settingsRes.settings) {
+          renderStatus(settingsRes.settings, res.channels ?? [], res.activeChannelId ?? null);
+        }
       }
-      renderAuth(!!res.loggedIn, res.email ?? null);
-    };
+    });
+
+    row.querySelector('.remove')!.addEventListener('click', async () => {
+      if (!confirm(`Remove ${ch.title}?`)) return;
+      const res = (await chrome.runtime.sendMessage({
+        type: 'REMOVE_CHANNEL',
+        channelId: ch.id,
+      })) as {
+        ok: boolean;
+        channels?: ChannelView[];
+        activeChannelId?: string | null;
+      };
+      if (res?.ok) {
+        await renderChannels(res.channels ?? [], res.activeChannelId ?? null);
+        const settingsRes = (await chrome.runtime.sendMessage({
+          type: 'GET_SETTINGS',
+        })) as { settings?: AppSettings };
+        if (settingsRes.settings) {
+          renderStatus(settingsRes.settings, res.channels ?? [], res.activeChannelId ?? null);
+        }
+      }
+    });
+
+    box.append(row);
   }
 }
 
-function renderStatus(settings: AppSettings) {
+function renderStatus(
+  settings: AppSettings,
+  channels: ChannelView[],
+  activeChannelId: string | null,
+) {
   const keyOk =
     settings.engine === 'gemini'
       ? !!settings.geminiApiKey.trim()
@@ -117,6 +196,8 @@ function renderStatus(settings: AppSettings) {
         : !!settings.libreTranslateUrl.trim();
   $('engineStatus').textContent = `${settings.engine}${keyOk ? ' · key set' : ' · key missing'}`;
   $('langCount').textContent = `${settings.selectedLanguages.length} selected`;
+  const active = channels.find((c) => c.id === activeChannelId);
+  $('activeChannel').textContent = active?.title ?? (channels.length ? '—' : 'none');
 }
 
 function escapeHtml(s: string): string {
@@ -125,6 +206,10 @@ function escapeHtml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/'/g, '&#39;');
 }
 
 load();

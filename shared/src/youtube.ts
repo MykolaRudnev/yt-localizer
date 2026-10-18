@@ -37,6 +37,32 @@ export async function listVideo(
   return item;
 }
 
+export interface MineChannel {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+}
+
+/** channels.list?part=snippet&mine=true — the channel for the signed-in account/brand. */
+export async function listMineChannel(accessToken: string): Promise<MineChannel> {
+  const data = await youtubeFetch<{
+    items?: {
+      id: string;
+      snippet?: {
+        title?: string;
+        thumbnails?: { default?: { url?: string } };
+      };
+    }[];
+  }>(`/channels?part=snippet&mine=true`, accessToken);
+  const item = data.items?.[0];
+  if (!item?.id) throw new Error('No YouTube channel found for this Google account');
+  return {
+    id: item.id,
+    title: item.snippet?.title ?? item.id,
+    thumbnailUrl: item.snippet?.thumbnails?.default?.url ?? '',
+  };
+}
+
 export async function ensureDefaultLanguage(
   video: YoutubeVideo,
   accessToken: string,

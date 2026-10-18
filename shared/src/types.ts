@@ -44,10 +44,29 @@ export interface EngineConfig {
   onGeminiModelResolved?: (model: string) => void | Promise<void>;
 }
 
-export interface AppSettings {
+/** Per-channel prefs (languages / terms / source lang). Engine keys stay global. */
+export interface ChannelSettings {
   selectedLanguages: string[];
   /** Snapshot of the last Translate click selection (for "Last used" preset). */
   lastUsedLanguages: string[];
+  protectedTerms: string[];
+  defaultSourceLanguage: string;
+}
+
+/** Connected YouTube channel + OAuth tokens (stored in chrome.storage.local). */
+export interface ConnectedChannel {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+  email: string | null;
+  accessToken: string;
+  /** Epoch ms when accessToken expires. */
+  expiresAt: number;
+  /** Present only if the OAuth response included refresh_token. */
+  refreshToken?: string;
+}
+
+export interface AppSettings {
   engine: EngineId;
   geminiApiKey: string;
   /**
@@ -61,11 +80,17 @@ export interface AppSettings {
   titleOver100: TitleOver100;
   hashtagMode: HashtagMode;
   chapterMode: ChapterMode;
-  protectedTerms: string[];
-  defaultSourceLanguage: string;
   dryRun: boolean;
   /** When true, do not re-translate languages that already have a localization. */
   skipExisting: boolean;
+  /**
+   * Defaults used when seeding a newly connected channel's settings.
+   * Prefer per-channel settings for active translate jobs.
+   */
+  selectedLanguages: string[];
+  lastUsedLanguages: string[];
+  protectedTerms: string[];
+  defaultSourceLanguage: string;
 }
 
 /** Keep in sync with languages.json presets.top10 */
@@ -81,6 +106,13 @@ const TOP10_DEFAULT = [
   'fr',
   'ar',
 ];
+
+export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
+  selectedLanguages: [...TOP10_DEFAULT],
+  lastUsedLanguages: [...TOP10_DEFAULT],
+  protectedTerms: ['Veil of Veles'],
+  defaultSourceLanguage: 'en',
+};
 
 export const DEFAULT_SETTINGS: AppSettings = {
   selectedLanguages: [...TOP10_DEFAULT],
@@ -119,6 +151,7 @@ export interface VideoSnippet {
   defaultLanguage?: string;
   defaultAudioLanguage?: string;
   channelId?: string;
+  channelTitle?: string;
 }
 
 export interface YoutubeVideo {
