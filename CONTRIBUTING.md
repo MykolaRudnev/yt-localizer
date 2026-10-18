@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve VeilTranslate.
+Thanks for helping improve YT Localizer.
 
 ## Development
 

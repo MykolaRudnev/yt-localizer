@@ -15,7 +15,7 @@ First public open-source release.
 - Background jobs with progress modal, minimized Studio widget, and toolbar popup status
 - Durable translation cache so work is not lost if the modal is closed mid-job
 - Multi-channel / multi-account OAuth (per-channel tokens and language settings)
-- Optional Node CLI (`yt-translate`) for the same pipeline outside Chrome
+- Optional Node CLI (`yt-localizer`) for the same pipeline outside Chrome
 - Skip-existing localizations (or overwrite from the Studio modal)
 
 ### Docs & packaging

@@ -372,7 +372,7 @@ async function resolveVideoAccess(videoId: string): Promise<
     return {
       ok: false,
       needsConnect: true,
-      error: 'No YouTube channels connected. Add one in the VeilTranslate popup.',
+      error: 'No YouTube channels connected. Add one in the YT Localizer popup.',
     };
   }
 

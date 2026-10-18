@@ -16,7 +16,7 @@ import {
 const baseHashInput = {
   title: 'Hello',
   description: 'World',
-  protectedTerms: ['Veil'],
+  protectedTerms: ['Brand'],
   hashtagMode: 'keep',
   chapterMode: 'translate_labels',
   titleOver100: 'truncate',

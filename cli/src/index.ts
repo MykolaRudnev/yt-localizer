@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * yt-translate <videoId> --langs es,de,pl --engine gemini --dry-run
+ * yt-localizer <videoId> --langs es,de,pl --engine gemini --dry-run
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -141,7 +141,7 @@ async function loopbackAuth(secrets: Secrets): Promise<string> {
 async function main() {
   const { videoId, langs, engine, dryRun } = parseArgs(process.argv);
   if (!videoId || !langs.length) {
-    console.log(`Usage: yt-translate <videoId> --langs es,de,pl [--engine gemini|deepl|libretranslate] [--dry-run|--publish]`);
+    console.log(`Usage: yt-localizer <videoId> --langs es,de,pl [--engine gemini|deepl|libretranslate] [--dry-run|--publish]`);
     process.exit(1);
   }
 

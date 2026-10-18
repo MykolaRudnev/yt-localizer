@@ -1,7 +1,7 @@
-# VeilTranslate
+# YT Localizer
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![CI](https://github.com/MykolaRudnevHUBER/veil-translate/actions/workflows/ci.yml/badge.svg)](https://github.com/MykolaRudnevHUBER/veil-translate/actions/workflows/ci.yml)
+[![CI](https://github.com/MykolaRudnevHUBER/yt-localizer/actions/workflows/ci.yml/badge.svg)](https://github.com/MykolaRudnevHUBER/yt-localizer/actions/workflows/ci.yml)
 
 **Translate YouTube titles & descriptions into official localizations — free, local, open source.**
 
@@ -30,13 +30,13 @@ Chrome MV3 extension (+ optional CLI) that adds an **Auto Titles & Description**
 
 ## Why
 
-Paid “bulk localization” tools charge monthly for what the YouTube API already supports. VeilTranslate is a thin, auditable layer: your keys stay in `chrome.storage`, translations go through APIs you choose, and publishes use official `videos.update` localizations — no scraping Studio forms.
+Paid “bulk localization” tools charge monthly for what the YouTube API already supports. YT Localizer is a thin, auditable layer: your keys stay in `chrome.storage`, translations go through APIs you choose, and publishes use official `videos.update` localizations — no scraping Studio forms.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/MykolaRudnevHUBER/veil-translate.git
-cd veil-translate
+git clone https://github.com/MykolaRudnevHUBER/yt-localizer.git
+cd yt-localizer
 npm ci
 npm test
 npm run build
@@ -54,7 +54,7 @@ More detail: [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) · [docs/CLI.md](.
 
 ```mermaid
 flowchart LR
-  A[YouTube Studio<br/>video page] --> B[VeilTranslate<br/>content script]
+  A[YouTube Studio<br/>video page] --> B[YT Localizer<br/>content script]
   B --> C[Service worker<br/>job + cache]
   C --> D{Engine}
   D --> E[DeepL Free]
@@ -83,7 +83,7 @@ A Top 10 batch is usually well within a default YouTube day quota; large “all 
 ## Privacy
 
 - API keys and OAuth tokens live in **`chrome.storage.local`** (or gitignored `.cli-secrets.json` for the CLI).
-- Nothing is sent to a VeilTranslate server — there isn’t one.
+- Nothing is sent to a YT Localizer server — there isn’t one.
 - Network calls go to Google (OAuth + YouTube + optional Gemini), DeepL, and/or your LibreTranslate URL.
 - See [SECURITY.md](./SECURITY.md).
 
@@ -115,7 +115,7 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 | `extension/` | MV3 source (Vite → `extension/dist`) |
 | `extension/dev/` | Mock harness for screenshots |
 | `shared/` | Engines + pipeline (extension + CLI) |
-| `cli/` | Optional `yt-translate` CLI |
+| `cli/` | Optional `yt-localizer` CLI |
 | `languages.json` | Language list + presets |
 | `docs/` | Configuration, CLI, screenshots |
 | `SETUP.md` | Google Cloud / API key walkthrough |
@@ -127,7 +127,7 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 | `npm run build` | Build extension + CLI |
 | `npm test` | Vitest |
 | `npm run screenshots` | Capture `docs/screenshots/*.png` from the mock harness |
-| `npm run yt-translate` | Run the CLI |
+| `npm run yt-localizer` | Run the CLI |
 
 ```bash
 # Screenshots (Playwright + system Chrome; fake data only)

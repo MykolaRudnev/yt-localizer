@@ -1,18 +1,18 @@
 # Setup guide
 
-Step-by-step credentials for VeilTranslate. **No secrets belong in git** — paste keys only into the extension Options page (or a local `.cli-secrets.json` for the CLI).
+Step-by-step credentials for YT Localizer. **No secrets belong in git** — paste keys only into the extension Options page (or a local `.cli-secrets.json` for the CLI).
 
 ## 1. Google Cloud project
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/).
-2. Create or select a project (e.g. `veil-translate`).
+2. Create or select a project (e.g. `yt-localizer`).
 3. **APIs & Services → Library** → enable **YouTube Data API v3**.
 
 ## 2. OAuth consent screen
 
 1. **APIs & Services → OAuth consent screen**.
 2. User type: **External**.
-3. App name: `VeilTranslate` (or similar). Support email: your Google account email.
+3. App name: `YT Localizer` (or similar). Support email: your Google account email.
 4. Publishing status: leave as **Testing** (fine for personal / small-team use).
 5. **Test users** → add **every** Google account you will connect (each channel or Brand Account login). While the app is in Testing, Google only allows listed test users — add each account before **Add channel** in the popup.
 6. Scopes: the extension requests  
@@ -24,7 +24,7 @@ Chrome’s `chrome.identity.launchWebAuthFlow` expects a **Web application** cli
 
 1. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
 2. Application type: **Web application**.
-3. Name: `VeilTranslate Extension`.
+3. Name: `YT Localizer Extension`.
 4. **Authorized redirect URIs** — add (you need the extension ID first; see below):
 
    ```
@@ -32,7 +32,7 @@ Chrome’s `chrome.identity.launchWebAuthFlow` expects a **Web application** cli
    ```
 
 5. Copy the **Client ID** only (looks like `xxxx.apps.googleusercontent.com`).  
-   Paste it into VeilTranslate **Options → Google OAuth Client ID**.  
+   Paste it into YT Localizer **Options → Google OAuth Client ID**.  
    You do **not** need the client secret in the extension (token flow via `chrome.identity`).
 
 The Options page shows the live redirect URI via `chrome.identity.getRedirectURL()` once the extension is loaded.
@@ -40,7 +40,7 @@ The Options page shows the live redirect URI via `chrome.identity.getRedirectURL
 ### Find the extension ID
 
 1. `npm run build`, then **Load unpacked** → `extension/dist`.
-2. On `chrome://extensions`, copy the **ID** under VeilTranslate.
+2. On `chrome://extensions`, copy the **ID** under YT Localizer.
 3. Put that ID into the redirect URI above and save the OAuth client.
 
 ### Pin a stable extension ID (recommended)
@@ -105,7 +105,7 @@ Options → Engine **LibreTranslate**, URL `http://localhost:5000`.
 2. Each account must already be listed under OAuth **Test users**.
 3. Tokens are stored per channel id in `chrome.storage.local`.
 4. Options → **Per-channel settings**: languages, protected terms (channel title is seeded automatically), default source language, auto-publish. Engine/API keys stay global.
-5. In Studio, VeilTranslate matches the video’s `snippet.channelId` to the connected token — it never writes with another channel’s token.
+5. In Studio, YT Localizer matches the video’s `snippet.channelId` to the connected token — it never writes with another channel’s token.
 
 ## 9. CLI secrets (optional)
 

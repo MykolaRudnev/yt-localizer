@@ -10,7 +10,7 @@ assignees: ''
 What gap or friction are you hitting?
 
 **Proposal**
-How should VeilTranslate behave instead?
+How should YT Localizer behave instead?
 
 **Alternatives**
 Other approaches you considered.

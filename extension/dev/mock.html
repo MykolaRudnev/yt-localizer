@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VeilTranslate mock harness (dev)</title>
+    <title>YT Localizer mock harness (dev)</title>
     <style>
       :root {
         --bg: oklch(15% 0.014 250);
@@ -31,13 +31,6 @@
         padding: 28px;
         border-radius: 10px;
         border: 1px solid #22262c;
-      }
-      .shot-label {
-        color: #6b7280;
-        font-size: 0.72rem;
-        margin-bottom: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
       }
       .studio-bg {
         background:
@@ -80,6 +73,11 @@
         align-items: center;
         justify-content: space-between;
         padding: 1rem 1.25rem 0.75rem;
+      }
+      .vt-brand-mark {
+        display: block; font-size: 0.65rem; font-weight: 600;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        color: var(--muted); margin-bottom: 0.2rem;
       }
       .vt-panel h2 {
         margin: 0; font-size: 1.15rem; font-family: var(--font-display);
@@ -275,15 +273,17 @@
     </style>
   </head>
   <body>
-    <h1 class="dev-title">VeilTranslate mock harness — demo data only, no network</h1>
+    <h1 class="dev-title">YT Localizer mock harness — demo data only, no network</h1>
 
     <!-- LANGUAGE PICKER -->
     <div class="shot" id="shot-modal-languages">
-      <div class="shot-label">modal-languages.png</div>
       <div class="vt-frame">
         <div class="vt-panel picker" role="dialog" aria-modal="true">
           <div class="vt-panel-head">
-            <h2>Auto Titles &amp; Description</h2>
+            <div>
+              <span class="vt-brand-mark">YT Localizer</span>
+              <h2>Auto Titles &amp; Description</h2>
+            </div>
             <button type="button" class="vt-icon-btn" aria-label="Close">×</button>
           </div>
           <div class="vt-meta">Dance of the Stone Circle | Dark Fantasy Music for Focus &amp; Sleep · default: en</div>
@@ -323,7 +323,6 @@
 
     <!-- TRANSLATING -->
     <div class="shot" id="shot-translating">
-      <div class="shot-label">translating.png</div>
       <div class="vt-frame">
         <div class="vt-panel" role="dialog" aria-modal="true">
           <div class="vt-panel-head">
@@ -364,7 +363,6 @@
 
     <!-- PREVIEW -->
     <div class="shot" id="shot-preview">
-      <div class="shot-label">preview.png</div>
       <div class="vt-frame">
         <div class="vt-panel preview" role="dialog" aria-modal="true">
           <div class="vt-panel-head">
@@ -412,7 +410,6 @@
 
     <!-- WIDGET -->
     <div class="shot" id="shot-widget">
-      <div class="shot-label">widget.png</div>
       <div class="studio-bg">
         <div class="studio-chrome">studio.youtube.com · Video details · demo channel</div>
         <div style="color:#888;font-size:1.05rem;max-width:28rem;line-height:1.35;">
@@ -430,12 +427,11 @@
 
     <!-- POPUP -->
     <div class="shot" id="shot-popup">
-      <div class="shot-label">popup.png</div>
       <div class="popup">
         <header>
           <div>
             <p class="brand-mark">Open source</p>
-            <h1>VeilTranslate</h1>
+            <h1>YT Localizer</h1>
           </div>
           <a href="#">Options</a>
         </header>
@@ -464,10 +460,9 @@
 
     <!-- OPTIONS -->
     <div class="shot" id="shot-options">
-      <div class="shot-label">options.png</div>
       <div class="options-wrap">
         <p class="brand-mark">Open source</p>
-        <h1>VeilTranslate</h1>
+        <h1>YT Localizer</h1>
         <p class="sub">Configure languages, engines, and publishing defaults.</p>
 
         <div class="opt-section">

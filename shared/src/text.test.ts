@@ -31,8 +31,8 @@ describe('title truncation', () => {
 
 describe('hashtags', () => {
   it('extracts hashtags', () => {
-    expect(extractHashtags('Hello #VeilOfVeles and #Slavic')).toEqual([
-      '#VeilOfVeles',
+    expect(extractHashtags('Hello #AcmeChannel and #Slavic')).toEqual([
+      '#AcmeChannel',
       '#Slavic',
     ]);
   });
