@@ -5,6 +5,13 @@ import {
   tokenMatchesVideoChannel,
 } from '@shared/channels';
 import { preflightEngine } from '@shared/engines/index';
+import {
+  badgeForJob,
+  jobFailed,
+  jobResults,
+  reduceJob,
+  type TranslateJob,
+} from '@shared/job';
 import { filterLanguagesForTranslate } from '@shared/langs';
 import { translateAllLanguages } from '@shared/pipeline';
 import {
@@ -22,24 +29,33 @@ import { addChannel, getAuthState, getValidAccessToken, logout } from './oauth';
 import {
   appendJobLog,
   getActiveChannelId,
+  getActiveJob,
   getChannelSettings,
   getChannels,
   getGeminiAutoModel,
   getGeminiExhaustedModels,
   getGeminiJsonModeByModel,
   getSettings,
+  getWidgetPos,
   patchChannelSettings,
   patchSettings,
   saveSettings,
   setActiveChannelId,
+  setActiveJob,
   setGeminiAutoModel,
   setGeminiModelExhausted,
   setGeminiModelJsonMode,
+  setWidgetPos,
 } from './storage';
 
 type Msg =
   | { type: 'START_TRANSLATE'; videoId: string; languages?: string[]; skipExisting?: boolean }
   | { type: 'STOP_TRANSLATE' }
+  | { type: 'CLEAR_JOB' }
+  | { type: 'GET_JOB' }
+  | { type: 'GET_WIDGET_POS' }
+  | { type: 'SET_WIDGET_POS'; x: number; y: number }
+  | { type: 'OPEN_STUDIO_FOR_JOB' }
   | { type: 'PUBLISH'; videoId: string; localizations: LocalizationResult[] }
   | { type: 'FETCH_VIDEO_META'; videoId: string }
   | { type: 'GET_SETTINGS' }
@@ -57,8 +73,14 @@ type Msg =
   | { type: 'LOGOUT'; channelId?: string }
   | { type: 'OPEN_OPTIONS' };
 
-/** Active job abort — STOP_TRANSLATE cancels in-flight requests. */
+const KEEP_ALIVE_ALARM = 'vt-keepalive';
+const JOB_PORT = 'vt-job';
+
 let activeJobAbort: AbortController | null = null;
+let memoryJob: TranslateJob | null = null;
+const jobPorts = new Set<chrome.runtime.Port>();
+/** In-flight translate promise — prevents overlapping START while running. */
+let runningPromise: Promise<void> | null = null;
 
 chrome.runtime.onInstalled.addListener(async () => {
   const data = await chrome.storage.local.get('settings');
@@ -67,14 +89,54 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message: Msg, sender, sendResponse) => {
-  handleMessage(message, sender.tab?.id)
-    .then(sendResponse)
-    .catch((err: unknown) => {
-      sendResponse({
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === KEEP_ALIVE_ALARM) {
+    void getActiveJob(); // touch storage / keep SW warm
+  }
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== JOB_PORT) return;
+  jobPorts.add(port);
+  void (async () => {
+    const job = memoryJob ?? (await getActiveJob());
+    if (job) port.postMessage({ type: 'JOB_UPDATE', job });
+  })();
+  port.onMessage.addListener((msg: { type?: string }) => {
+    if (msg?.type === 'PING') {
+      void getActiveJob().then((job) => {
+        try {
+          port.postMessage({ type: 'PONG', job: memoryJob ?? job });
+        } catch {
+          /* disconnected */
+        }
       });
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    jobPorts.delete(port);
+  });
+});
+
+chrome.runtime.onMessage.addListener((message: Msg, sender, sendResponse) => {
+  // Always settle sendResponse so MV3 never leaves the channel hanging.
+  handleMessage(message, sender.tab?.id)
+    .then((result) => {
+      try {
+        sendResponse(result);
+      } catch {
+        /* channel already closed */
+      }
+    })
+    .catch((err: unknown) => {
+      try {
+        sendResponse({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } catch {
+        /* channel already closed */
+      }
     });
   return true;
 });
@@ -130,7 +192,6 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       };
     case 'PATCH_CHANNEL_SETTINGS': {
       const settings = await patchChannelSettings(message.channelId, message.partial);
-      // Mirror language selection into global defaults for popup status count.
       if (message.partial.selectedLanguages || message.partial.lastUsedLanguages) {
         await patchSettings({
           selectedLanguages: settings.selectedLanguages,
@@ -174,6 +235,37 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
       return { ok: true, ...(await getAuthState()) };
     case 'FETCH_VIDEO_META':
       return fetchVideoMeta(message.videoId);
+    case 'GET_JOB': {
+      const job = memoryJob ?? (await getActiveJob());
+      memoryJob = job;
+      return { ok: true, job };
+    }
+    case 'CLEAR_JOB': {
+      if (memoryJob?.phase === 'running') {
+        activeJobAbort?.abort();
+      }
+      await persistJob(null);
+      return { ok: true };
+    }
+    case 'GET_WIDGET_POS':
+      return { ok: true, pos: await getWidgetPos() };
+    case 'SET_WIDGET_POS':
+      await setWidgetPos({ x: message.x, y: message.y });
+      return { ok: true };
+    case 'OPEN_STUDIO_FOR_JOB': {
+      const job = memoryJob ?? (await getActiveJob());
+      if (!job) return { ok: false, error: 'No active job' };
+      const url = `https://studio.youtube.com/video/${job.videoId}/edit`;
+      const tabs = await chrome.tabs.query({ url: 'https://studio.youtube.com/*' });
+      const match = tabs.find((t) => t.url?.includes(job.videoId));
+      if (match?.id != null) {
+        await chrome.tabs.update(match.id, { active: true, url });
+        if (match.windowId != null) await chrome.windows.update(match.windowId, { focused: true });
+      } else {
+        await chrome.tabs.create({ url });
+      }
+      return { ok: true };
+    }
     case 'START_TRANSLATE':
       return startTranslate(message.videoId, tabId, message.languages, message.skipExisting);
     case 'STOP_TRANSLATE':
@@ -186,12 +278,44 @@ async function handleMessage(message: Msg, tabId?: number): Promise<unknown> {
   }
 }
 
-async function notifyTab(tabId: number | undefined, payload: unknown) {
-  if (tabId == null) return;
+async function persistJob(job: TranslateJob | null) {
+  memoryJob = job;
+  await setActiveJob(job);
+  await updateBadge(job);
+  broadcastJob(job);
+  if (job?.phase === 'running') await ensureKeepAlive(true);
+  else await ensureKeepAlive(false);
+}
+
+function broadcastJob(job: TranslateJob | null) {
+  for (const port of jobPorts) {
+    try {
+      port.postMessage({ type: 'JOB_UPDATE', job });
+    } catch {
+      jobPorts.delete(port);
+    }
+  }
+}
+
+async function updateBadge(job: TranslateJob | null) {
+  const { text, color } = badgeForJob(job);
   try {
-    await chrome.tabs.sendMessage(tabId, payload);
+    await chrome.action.setBadgeText({ text });
+    if (text) await chrome.action.setBadgeBackgroundColor({ color });
   } catch {
-    // tab may have navigated
+    /* action may be unavailable in tests */
+  }
+}
+
+async function ensureKeepAlive(on: boolean) {
+  try {
+    if (on) {
+      await chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: 1 });
+    } else {
+      await chrome.alarms.clear(KEEP_ALIVE_ALARM);
+    }
+  } catch {
+    /* alarms permission / unavailable */
   }
 }
 
@@ -201,10 +325,6 @@ type ResolvedVideo = {
   token: string;
 };
 
-/**
- * Probe connected tokens until we find one that owns the video.
- * Never returns a token whose channelId ≠ video.snippet.channelId.
- */
 async function resolveVideoAccess(videoId: string): Promise<
   | { ok: true; resolved: ResolvedVideo }
   | {
@@ -247,7 +367,6 @@ async function resolveVideoAccess(videoId: string): Promise<
           resolved: { video, channelId: videoChannelId, token },
         };
       }
-      // Wrong account could still list a public video — keep probing / report connect.
     } catch {
       // try next channel
     }
@@ -256,7 +375,6 @@ async function resolveVideoAccess(videoId: string): Promise<
   if (discovered) {
     const match = selectChannelForVideo(channels, discovered.channelId);
     if (match) {
-      // Token was stale during probe; try once more with matching channel only.
       const token = await getValidAccessToken(match.id);
       const video = await listVideo(videoId, token);
       if (tokenMatchesVideoChannel(match, video.snippet.channelId)) {
@@ -310,113 +428,114 @@ async function fetchVideoMeta(videoId: string) {
   };
 }
 
+/**
+ * Starts (or rejects) a job and returns immediately with the job snapshot.
+ * Work continues in the SW; progress streams via the vt-job port.
+ */
 async function startTranslate(
   videoId: string,
-  tabId: number | undefined,
+  _tabId: number | undefined,
   languagesOverride?: string[],
   skipExistingOverride?: boolean,
 ) {
+  if (runningPromise && memoryJob?.phase === 'running') {
+    return {
+      ok: false,
+      error: 'A translation job is already running. Stop it or wait, or use New translation.',
+      job: memoryJob,
+    };
+  }
+
   activeJobAbort?.abort();
   const abort = new AbortController();
   activeJobAbort = abort;
 
-  try {
-    const access = await resolveVideoAccess(videoId);
-    if (!access.ok) {
-      throw new Error(access.error);
-    }
-    const { video: listed, channelId, token } = access.resolved;
-    let video = listed;
+  const access = await resolveVideoAccess(videoId);
+  if (!access.ok) {
+    throw new Error(access.error);
+  }
+  const { video: listed, channelId, token } = access.resolved;
+  let video = listed;
 
-    const global = await getSettings();
-    const channelPrefs = await getChannelSettings(channelId);
-    const settings = mergeSettingsForChannel(global, channelPrefs);
+  const global = await getSettings();
+  const channelPrefs = await getChannelSettings(channelId);
+  const settings = mergeSettingsForChannel(global, channelPrefs);
 
-    const selected =
-      languagesOverride?.length ? languagesOverride : settings.selectedLanguages;
+  const selected =
+    languagesOverride?.length ? languagesOverride : settings.selectedLanguages;
 
-    if (!selected.length) {
-      throw new Error('Select at least one language.');
-    }
-    if (settings.engine === 'gemini' && !settings.geminiApiKey) {
-      throw new Error('Gemini API key missing. Open Options to add it.');
-    }
-    if (settings.engine === 'deepl' && !settings.deeplApiKey) {
-      throw new Error('DeepL API key missing. Open Options to add it.');
-    }
+  if (!selected.length) {
+    throw new Error('Select at least one language.');
+  }
+  if (settings.engine === 'gemini' && !settings.geminiApiKey) {
+    throw new Error('Gemini API key missing. Open Options to add it.');
+  }
+  if (settings.engine === 'deepl' && !settings.deeplApiKey) {
+    throw new Error('DeepL API key missing. Open Options to add it.');
+  }
 
-    await patchChannelSettings(channelId, {
-      selectedLanguages: selected,
-      lastUsedLanguages: selected,
-    });
+  await patchChannelSettings(channelId, {
+    selectedLanguages: selected,
+    lastUsedLanguages: selected,
+  });
 
-    if (!video.snippet.defaultLanguage) {
-      if (settings.dryRun) {
-        video = {
-          ...video,
-          snippet: {
-            ...video.snippet,
-            defaultLanguage: settings.defaultSourceLanguage || 'en',
-          },
-        };
-        await notifyTab(tabId, {
-          type: 'VT_STATUS',
-          message: `Dry-run: would set defaultLanguage=${video.snippet.defaultLanguage}`,
-        });
-      } else {
-        video = await ensureDefaultLanguage(
-          video,
-          token,
-          settings.defaultSourceLanguage || 'en',
-        );
-      }
-    }
-
-    if (video.snippet.channelId !== channelId) {
-      throw new Error('Refusing to translate: token channel does not match video channel.');
-    }
-
-    const skipExisting = skipExistingOverride ?? settings.skipExisting;
-    const langs = filterLanguagesForTranslate(selected, video.localizations, {
-      skipExisting,
-      defaultLanguage: video.snippet.defaultLanguage,
-    });
-
-    if (!langs.length) {
-      return {
-        ok: true,
-        dryRun: settings.dryRun,
-        channelId,
-        source: {
-          title: video.snippet.title,
-          description: video.snippet.description,
-          defaultLanguage: video.snippet.defaultLanguage,
+  if (!video.snippet.defaultLanguage) {
+    if (settings.dryRun) {
+      video = {
+        ...video,
+        snippet: {
+          ...video.snippet,
+          defaultLanguage: settings.defaultSourceLanguage || 'en',
         },
-        existingLocalizations: video.localizations ?? {},
-        results: [] as LocalizationResult[],
-        failed: [] as { language: string; error: string }[],
-        skippedAll: true,
       };
+    } else {
+      video = await ensureDefaultLanguage(
+        video,
+        token,
+        settings.defaultSourceLanguage || 'en',
+      );
     }
+  }
 
-    const title = video.snippet.title;
-    const description = video.snippet.description;
-    const geminiAutoModel = await getGeminiAutoModel();
-    const geminiJsonModeByModel = await getGeminiJsonModeByModel();
-    const geminiExhaustedModels = await getGeminiExhaustedModels();
+  if (video.snippet.channelId !== channelId) {
+    throw new Error('Refusing to translate: token channel does not match video channel.');
+  }
 
-    await notifyTab(tabId, {
-      type: 'VT_PROGRESS',
-      language: '',
-      index: 0,
-      total: langs.length,
-      status: 'running',
-      languages: langs,
-      engine: settings.engine,
-    });
+  const skipExisting = skipExistingOverride ?? settings.skipExisting;
+  const langs = filterLanguagesForTranslate(selected, video.localizations, {
+    skipExisting,
+    defaultLanguage: video.snippet.defaultLanguage,
+  });
 
-    const { ok, failed, stopReason, fatalSummary, fatalHint, pending } =
-      await translateAllLanguages(
+  if (!langs.length) {
+    return { ok: true, skippedAll: true, job: null };
+  }
+
+  const title = video.snippet.title;
+  const description = video.snippet.description;
+
+  let job = reduceJob(null, {
+    type: 'create',
+    id: crypto.randomUUID(),
+    videoId,
+    channelId,
+    languages: langs,
+    dryRun: settings.dryRun,
+    skipExisting,
+    sourceTitle: title,
+    sourceDescription: description,
+    defaultLanguage: video.snippet.defaultLanguage,
+    engine: settings.engine,
+  });
+  await persistJob(job);
+
+  const geminiAutoModel = await getGeminiAutoModel();
+  const geminiJsonModeByModel = await getGeminiJsonModeByModel();
+  const geminiExhaustedModels = await getGeminiExhaustedModels();
+
+  runningPromise = (async () => {
+    try {
+      const { ok, failed, stopReason, fatalSummary, fatalHint } = await translateAllLanguages(
         title,
         description,
         langs,
@@ -427,7 +546,27 @@ async function startTranslate(
           geminiExhaustedModels,
         },
         async (info) => {
-          await notifyTab(tabId, { type: 'VT_PROGRESS', ...info, languages: langs });
+          if (abort.signal.aborted && info.status === 'running') return;
+          const cur = memoryJob;
+          if (!cur || cur.id !== job!.id) return;
+          const next = reduceJob(cur, {
+            type: 'progress',
+            language: info.language || undefined,
+            status: info.status,
+            engine: info.engine,
+            model: info.model,
+            note: info.note,
+            error: info.error,
+            errorDetail: info.errorDetail,
+            fatalSummary: info.fatalSummary,
+            fatalHint: info.fatalHint,
+            stopReason: info.stopReason,
+            title: undefined,
+            description: undefined,
+          });
+          // Attach result text when ok — pipeline doesn't pass title/desc in progress;
+          // finish step merges full results.
+          if (next) await persistJob(next);
         },
         {
           abort,
@@ -439,33 +578,56 @@ async function startTranslate(
         },
       );
 
-    const entry: JobLogEntry = {
-      id: crypto.randomUUID(),
-      videoId,
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      dryRun: settings.dryRun,
-      ok: ok.map((r) => r.language),
-      failed,
-    };
-    await appendJobLog(entry);
+      const cur = memoryJob;
+      if (!cur || cur.id !== job!.id) return;
 
-    return {
-      ok: true,
-      dryRun: settings.dryRun,
-      channelId,
-      source: { title, description, defaultLanguage: video.snippet.defaultLanguage },
-      existingLocalizations: video.localizations ?? {},
-      results: ok,
-      failed,
-      pending,
-      stopReason,
-      fatalSummary,
-      fatalHint,
-    };
-  } finally {
-    if (activeJobAbort === abort) activeJobAbort = null;
-  }
+      let phase: 'done' | 'failed' | 'stopped' = 'done';
+      if (stopReason === 'aborted') phase = 'stopped';
+      else if (stopReason === 'fatal' || stopReason === 'circuit') {
+        phase = ok.length ? 'done' : 'failed';
+      } else if (!ok.length && failed.length) {
+        phase = 'failed';
+      }
+
+      const finished = reduceJob(cur, {
+        type: 'finish',
+        phase,
+        results: ok,
+        failed,
+        stopReason,
+        fatalSummary,
+        fatalHint,
+      });
+      await persistJob(finished);
+
+      const entry: JobLogEntry = {
+        id: crypto.randomUUID(),
+        videoId,
+        startedAt: new Date(cur.startedAt).toISOString(),
+        finishedAt: new Date().toISOString(),
+        dryRun: settings.dryRun,
+        ok: ok.map((r) => r.language),
+        failed,
+      };
+      await appendJobLog(entry);
+    } catch (err) {
+      const cur = memoryJob;
+      if (!cur || cur.id !== job!.id) return;
+      const finished = reduceJob(cur, {
+        type: 'finish',
+        phase: 'failed',
+        fatalSummary: err instanceof Error ? err.message : String(err),
+        stopReason: 'fatal',
+      });
+      await persistJob(finished);
+    } finally {
+      if (activeJobAbort === abort) activeJobAbort = null;
+      runningPromise = null;
+    }
+  })();
+
+  // Don't await runningPromise — return immediately so the message channel stays happy.
+  return { ok: true, job, skippedAll: false };
 }
 
 async function publish(videoId: string, localizations: LocalizationResult[]) {
@@ -518,6 +680,9 @@ async function publish(videoId: string, localizations: LocalizationResult[]) {
       failed: [],
     };
     await appendJobLog(entry);
+    // Clear finished job after successful publish
+    const job = memoryJob ?? (await getActiveJob());
+    if (job?.videoId === videoId) await persistJob(null);
     return { ok: true, published: localizations.map((l) => l.language) };
   } catch (err) {
     const entry: JobLogEntry = {
@@ -536,3 +701,21 @@ async function publish(videoId: string, localizations: LocalizationResult[]) {
     throw err;
   }
 }
+
+// Restore job + badge on SW wake
+void (async () => {
+  memoryJob = await getActiveJob();
+  await updateBadge(memoryJob);
+  if (memoryJob?.phase === 'running') {
+    // SW restarted mid-job — mark stopped (can't resume in-flight fetch)
+    memoryJob = reduceJob(memoryJob, {
+      type: 'finish',
+      phase: 'stopped',
+      fatalSummary: 'Extension worker restarted. Progress below was saved; use Retry for remaining.',
+      stopReason: 'aborted',
+      results: jobResults(memoryJob),
+      failed: jobFailed(memoryJob),
+    });
+    await persistJob(memoryJob);
+  }
+})();

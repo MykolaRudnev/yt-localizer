@@ -5,7 +5,9 @@
   "description": "Translate YouTube titles & descriptions into localizations from Studio.",
   "permissions": [
     "storage",
-    "identity"
+    "identity",
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "https://www.googleapis.com/*",
