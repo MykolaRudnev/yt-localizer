@@ -39,16 +39,15 @@ Toolbar popup: connected channels (avatar/title, Add channel / Remove, active se
 
 **Multi-channel:** connect each Google account (or Brand Account) via **Add channel**. In Studio, VeilTranslate detects the video’s `snippet.channelId` and uses that channel’s stored token only — never writes with another channel’s token. If the owning channel is not connected, the modal asks you to connect it.
 
-Keyboard: **Enter** confirms the primary action, **Esc** closes the modal.
+Keyboard: **Enter** confirms the primary action; **Esc** / **×** / **Minimize** hide the modal (job keeps running). Outside click and scroll do not dismiss it. Re-clicking the Studio pill reopens the same job.
 
 ### Screenshots
 
 | UI | Preview |
 |----|---------|
-| Language picker modal | ![modal](docs/screenshots/modal.png) |
-| Editable preview | ![preview](docs/screenshots/preview.png) |
-| Toolbar popup | ![popup](docs/screenshots/popup.png) |
-| Options page | ![options](docs/screenshots/options.png) |
+| Job progress modal | ![modal](docs/screenshots/modal.png) |
+| Minimized status widget | ![widget](docs/screenshots/widget.png) |
+| Toolbar popup with job | ![popup](docs/screenshots/popup.png) |
 
 Regenerate (dev only, no network):
 

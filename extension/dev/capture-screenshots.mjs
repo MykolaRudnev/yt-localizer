@@ -14,9 +14,8 @@ const outDir = join(root, 'docs/screenshots');
 
 const shots = [
   { id: 'shot-modal', file: 'modal.png' },
-  { id: 'shot-preview', file: 'preview.png' },
+  { id: 'shot-widget', file: 'widget.png' },
   { id: 'shot-popup', file: 'popup.png' },
-  { id: 'shot-options', file: 'options.png' },
 ];
 
 async function main() {

@@ -2,7 +2,7 @@
   position: fixed;
   right: 20px;
   bottom: 24px;
-  z-index: 2147483646;
+  z-index: 2147483645;
   background: #f8f8f8;
   color: #0f0f0f;
   border: 1px solid #d3d3d3;
@@ -23,16 +23,95 @@
   cursor: wait;
 }
 
+/* Minimized job widget */
+#vt-job-widget {
+  position: fixed;
+  right: 20px;
+  bottom: 72px;
+  z-index: 2147483646;
+  width: 220px;
+  background: #1a222c;
+  color: #e8eef4;
+  border: 1px solid #2a3542;
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  font: 500 12px/1.3 "Roboto", "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  user-select: none;
+}
+
+#vt-job-widget:active {
+  cursor: grabbing;
+}
+
+#vt-job-widget .vt-widget-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.4rem;
+}
+
+#vt-job-widget .vt-widget-icon {
+  flex-shrink: 0;
+  width: 1.1rem;
+  text-align: center;
+}
+
+#vt-job-widget .vt-spin {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid #3b82f6;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: vt-spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes vt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#vt-job-widget .vt-widget-bar {
+  height: 4px;
+  background: #0f1419;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#vt-job-widget .vt-widget-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+#vt-job-widget .vt-widget-cta {
+  margin-top: 0.5rem;
+  width: 100%;
+  border-radius: 6px;
+  border: none;
+  background: #3d9a6a;
+  color: #fff;
+  font: 600 11px/1.2 inherit;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+}
+
+/* Modal overlay — does not close on outside click */
 #vt-modal-root {
   position: fixed;
   inset: 0;
   z-index: 2147483647;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: "Roboto", "Segoe UI", system-ui, sans-serif;
 }
 
 #vt-modal-root .vt-panel {
@@ -42,29 +121,88 @@
   max-height: 90vh;
   overflow: auto;
   border-radius: 12px;
-  padding: 1.25rem;
+  padding: 0;
   border: 1px solid #2a3542;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
 #vt-modal-root .vt-picker {
   width: min(720px, 100%);
+  max-height: 85vh;
+}
+
+#vt-modal-root .vt-job {
+  width: min(1100px, 92vw);
+  height: min(80vh, 900px);
+  max-height: 80vh;
+}
+
+#vt-modal-root .vt-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem 0.75rem;
+  flex-shrink: 0;
+}
+
+#vt-modal-root .vt-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 #vt-modal-root h2 {
-  margin: 0 0 0.5rem;
+  margin: 0;
   font-size: 1.15rem;
+  font-weight: 600;
+}
+
+#vt-modal-root .vt-icon-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #2a3542;
+  background: #0f1419;
+  color: #e8eef4;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#vt-modal-root .vt-icon-btn:hover {
+  border-color: #8b9aab;
+}
+
+#vt-modal-root .vt-linkish {
+  background: transparent;
+  border: none;
+  color: #8b9aab;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.25rem;
+}
+
+#vt-modal-root .vt-linkish:hover {
+  color: #e8eef4;
 }
 
 #vt-modal-root .vt-meta {
   color: #8b9aab;
   font-size: 0.9rem;
-  margin-bottom: 0.75rem;
+  margin: 0 1.25rem 0.75rem;
 }
 
 #vt-modal-root .vt-banner {
   border-radius: 8px;
   padding: 0.65rem 0.85rem;
-  margin-bottom: 0.85rem;
+  margin: 0 1.25rem 0.85rem;
   font-size: 0.88rem;
 }
 
@@ -90,7 +228,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-bottom: 0.75rem;
+  margin: 0 1.25rem 0.75rem;
 }
 
 #vt-modal-root .vt-chip {
@@ -109,8 +247,8 @@
 }
 
 #vt-modal-root .vt-search {
-  width: 100%;
-  margin-bottom: 0.65rem;
+  width: calc(100% - 2.5rem);
+  margin: 0 1.25rem 0.65rem;
   background: #0f1419;
   color: #e8eef4;
   border: 1px solid #2a3542;
@@ -120,12 +258,14 @@
 }
 
 #vt-modal-root .vt-lang-grid {
-  max-height: 280px;
+  flex: 1;
+  min-height: 160px;
+  max-height: 320px;
   overflow: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.2rem 0.5rem;
-  margin-bottom: 0.85rem;
+  margin: 0 1.25rem 0.85rem;
   border: 1px solid #2a3542;
   border-radius: 8px;
   padding: 0.5rem;
@@ -169,7 +309,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem 1rem;
-  margin-bottom: 0.75rem;
+  margin: 0 1.25rem 0.75rem;
   font-size: 0.88rem;
 }
 
@@ -191,6 +331,100 @@
   gap: 0.35rem;
   cursor: pointer;
   color: #c5d0db;
+}
+
+#vt-modal-root .vt-dry-inline {
+  margin: 0 1.25rem 0.75rem;
+}
+
+#vt-modal-root .vt-progress-head {
+  padding: 0 1.25rem 0.75rem;
+  flex-shrink: 0;
+}
+
+#vt-modal-root .vt-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  margin-bottom: 0.4rem;
+  color: #c5d0db;
+}
+
+#vt-modal-root .vt-progress-track {
+  height: 8px;
+  background: #0f1419;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #2a3542;
+}
+
+#vt-modal-root .vt-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #3d9a6a);
+  border-radius: 4px;
+  transition: width 0.25s ease;
+}
+
+#vt-modal-root .vt-progress-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0 1.25rem;
+  padding-bottom: 0.5rem;
+  border: 1px solid #2a3542;
+  border-radius: 8px;
+  background: #0f1419;
+}
+
+#vt-modal-root .vt-lang-row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) 4rem;
+  gap: 0.35rem;
+  align-items: start;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #2a3542;
+}
+
+#vt-modal-root .vt-lang-row details {
+  grid-column: 1 / -1;
+}
+
+#vt-modal-root .vt-lang-code {
+  font-weight: 600;
+}
+
+#vt-modal-root .vt-lang-engine {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+#vt-modal-root .vt-lang-status.vt-muted,
+#vt-modal-root .vt-muted {
+  color: #8b9aab;
+}
+
+#vt-modal-root .vt-err-detail {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  color: #d97878;
+  max-height: 6rem;
+  overflow: auto;
+}
+
+#vt-modal-root .vt-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0 1.25rem;
 }
 
 #vt-modal-root table {
@@ -222,11 +456,23 @@
   font-size: 0.75rem;
 }
 
+#vt-modal-root .vt-footer,
 #vt-modal-root .vt-actions {
   display: flex;
   gap: 0.6rem;
   justify-content: flex-end;
-  margin-top: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem 1.1rem;
+  flex-shrink: 0;
+}
+
+#vt-modal-root .vt-footer.sticky {
+  position: sticky;
+  bottom: 0;
+  background: #1a222c;
+  border-top: 1px solid #2a3542;
+  margin-top: auto;
 }
 
 #vt-modal-root button {
@@ -251,60 +497,16 @@
   cursor: not-allowed;
 }
 
-#vt-progress {
-  margin: 0.5rem 0 0.75rem;
-  font-size: 0.9rem;
-  color: #8b9aab;
-}
-
-#vt-modal-root .vt-progress-list {
-  max-height: 280px;
-  overflow: auto;
-  font-size: 0.85rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-#vt-modal-root .vt-lang-row {
-  display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr) 4rem 1fr;
-  gap: 0.35rem;
-  align-items: start;
-  padding: 0.2rem 0.15rem;
-  border-bottom: 1px solid #2a3542;
-}
-
-#vt-modal-root .vt-lang-code {
-  font-weight: 600;
-}
-
-#vt-modal-root .vt-lang-engine {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.75rem;
-}
-
-#vt-modal-root .vt-lang-status.vt-muted,
-#vt-modal-root .vt-muted {
-  color: #8b9aab;
-}
-
-#vt-modal-root .vt-err-detail {
-  margin: 0.25rem 0 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 0.75rem;
-  color: #d97878;
-  max-height: 6rem;
-  overflow: auto;
-}
-
 #vt-modal-root .vt-ok {
   color: #3d9a6a;
+  margin: 0 1.25rem 0.75rem;
 }
 
 #vt-modal-root .vt-err {
   color: #d97878;
+  margin: 0 1.25rem 0.75rem;
+}
+
+#vt-modal-root p {
+  margin: 0 1.25rem 0.75rem;
 }

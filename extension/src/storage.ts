@@ -1,3 +1,4 @@
+import type { TranslateJob } from '@shared/job';
 import type {
   AppSettings,
   ChannelSettings,
@@ -15,6 +16,21 @@ const CHANNEL_SETTINGS_KEY = 'channelSettings';
 const GEMINI_AUTO_MODEL_KEY = 'geminiAutoModel';
 const GEMINI_MODEL_CAPS_KEY = 'geminiModelCaps';
 const GEMINI_EXHAUSTED_KEY = 'geminiExhaustedModels';
+const ACTIVE_JOB_KEY = 'activeJob';
+const WIDGET_POS_KEY = 'vtWidgetPos';
+
+/** Prefer session (cleared on browser restart); fall back to local. */
+async function jobStore(): Promise<typeof chrome.storage.session | typeof chrome.storage.local> {
+  try {
+    if (chrome.storage.session) {
+      await chrome.storage.session.get(ACTIVE_JOB_KEY);
+      return chrome.storage.session;
+    }
+  } catch {
+    // session unavailable (older Chrome / tests)
+  }
+  return chrome.storage.local;
+}
 
 type GeminiModelCaps = Record<string, { jsonMode?: boolean }>;
 
@@ -201,4 +217,39 @@ export async function setGeminiModelExhausted(model: string, untilMs: number): P
   const current = await getGeminiExhaustedModels();
   current[model] = untilMs;
   await chrome.storage.local.set({ [GEMINI_EXHAUSTED_KEY]: current });
+}
+
+export async function getActiveJob(): Promise<TranslateJob | null> {
+  const store = await jobStore();
+  const data = await store.get(ACTIVE_JOB_KEY);
+  const job = data[ACTIVE_JOB_KEY] as TranslateJob | undefined;
+  if (job) return job;
+  // Migrate if saved under the other area
+  if (store !== chrome.storage.local) {
+    const local = await chrome.storage.local.get(ACTIVE_JOB_KEY);
+    return (local[ACTIVE_JOB_KEY] as TranslateJob | undefined) ?? null;
+  }
+  return null;
+}
+
+export async function setActiveJob(job: TranslateJob | null): Promise<void> {
+  const store = await jobStore();
+  if (job) await store.set({ [ACTIVE_JOB_KEY]: job });
+  else await store.remove(ACTIVE_JOB_KEY);
+  // Mirror to local so tab reload after SW restart still sees finished jobs
+  if (store !== chrome.storage.local) {
+    if (job) await chrome.storage.local.set({ [ACTIVE_JOB_KEY]: job });
+    else await chrome.storage.local.remove(ACTIVE_JOB_KEY);
+  }
+}
+
+export type WidgetPos = { x: number; y: number };
+
+export async function getWidgetPos(): Promise<WidgetPos | null> {
+  const data = await chrome.storage.local.get(WIDGET_POS_KEY);
+  return (data[WIDGET_POS_KEY] as WidgetPos | undefined) ?? null;
+}
+
+export async function setWidgetPos(pos: WidgetPos): Promise<void> {
+  await chrome.storage.local.set({ [WIDGET_POS_KEY]: pos });
 }

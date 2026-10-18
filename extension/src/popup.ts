@@ -1,3 +1,4 @@
+import { jobFailed, jobPercent, type TranslateJob } from '@shared/job';
 import type { AppSettings } from '@shared/types';
 
 type ChannelView = {
@@ -11,7 +12,7 @@ type ChannelView = {
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function load() {
-  const [settingsRes, authRes] = await Promise.all([
+  const [settingsRes, authRes, jobRes] = await Promise.all([
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }) as Promise<{
       ok: boolean;
       settings?: AppSettings;
@@ -22,6 +23,10 @@ async function load() {
       channels?: ChannelView[];
       activeChannelId?: string | null;
     }>,
+    chrome.runtime.sendMessage({ type: 'GET_JOB' }) as Promise<{
+      ok: boolean;
+      job?: TranslateJob | null;
+    }>,
   ]);
 
   const settings = settingsRes.settings;
@@ -30,6 +35,16 @@ async function load() {
   renderChecklist(settings);
   await renderChannels(authRes.channels ?? [], authRes.activeChannelId ?? null);
   renderStatus(settings, authRes.channels ?? [], authRes.activeChannelId ?? null);
+  renderJob(jobRes.job ?? null);
+
+  try {
+    const port = chrome.runtime.connect({ name: 'vt-job' });
+    port.onMessage.addListener((msg: { type?: string; job?: TranslateJob | null }) => {
+      if (msg.type === 'JOB_UPDATE' || msg.type === 'PONG') renderJob(msg.job ?? null);
+    });
+  } catch {
+    /* ignore */
+  }
 
   ($('dryRun') as HTMLInputElement).checked = settings.dryRun;
   $('dryRun').onchange = async () => {
@@ -47,6 +62,10 @@ async function load() {
   $('setupLink').onclick = (e) => {
     e.preventDefault();
     void chrome.tabs.create({ url: chrome.runtime.getURL('SETUP.md') });
+  };
+
+  $('openStudio').onclick = () => {
+    void chrome.runtime.sendMessage({ type: 'OPEN_STUDIO_FOR_JOB' });
   };
 
   $('addChannelBtn').onclick = async () => {
@@ -69,6 +88,26 @@ async function load() {
       btn.disabled = false;
     }
   };
+}
+
+function renderJob(job: TranslateJob | null) {
+  const section = $('jobSection');
+  if (!job) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  const pct = jobPercent(job);
+  const failedN = jobFailed(job).length;
+  let status = '';
+  if (job.phase === 'running') status = `Translating ${job.doneCount}/${job.totalCount}`;
+  else if (failedN) status = `⚠ ${failedN} failed · ${job.doneCount}/${job.totalCount}`;
+  else status = `✓ Done ${job.doneCount}/${job.totalCount}`;
+  $('jobSummary').innerHTML = `
+    <div class="job-line"><span class="muted">Video</span> <code>${escapeHtml(job.videoId)}</code></div>
+    <div class="job-line">${escapeHtml(status)} · ${pct}%</div>`;
+  $('jobFill').style.width = `${pct}%`;
+  $('jobFill').dataset.phase = job.phase;
 }
 
 function renderChecklist(settings: AppSettings) {

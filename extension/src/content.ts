@@ -1,11 +1,22 @@
 import './content.css';
+import {
+  jobEta,
+  jobFailed,
+  jobPercent,
+  jobResults,
+  shouldReopenExistingJob,
+  type TranslateJob,
+} from '@shared/job';
 import { flagForLanguage } from '@shared/langs';
 import { charWarning } from '@shared/text';
 import type { AppSettings, LocalizationResult } from '@shared/types';
 import languagesData from '../../languages.json';
 
 const BUTTON_ID = 'veil-translate-btn';
+const MODAL_ID = 'vt-modal-root';
+const WIDGET_ID = 'vt-job-widget';
 const VIDEO_PATH_RE = /\/video\/([^/]+)\/(edit|translations)(?:\/|$|\?)/;
+const JOB_PORT = 'vt-job';
 
 type LangFile = {
   presets: Record<string, { label: string; codes: string[] }>;
@@ -14,9 +25,29 @@ type LangFile = {
 
 const data = languagesData as LangFile;
 
+/** UI mode: full modal vs minimized widget. */
+let uiExpanded = false;
+let jobPort: chrome.runtime.Port | null = null;
+let currentJob: TranslateJob | null = null;
+let pingTimer: ReturnType<typeof setInterval> | null = null;
+let unbindModalKeys: (() => void) | null = null;
+let releaseFocusTrap: (() => void) | null = null;
+
 function getVideoId(): string | null {
   const m = location.pathname.match(VIDEO_PATH_RE);
   return m?.[1] ?? null;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/'/g, '&#39;');
 }
 
 function ensureButton() {
@@ -33,99 +64,367 @@ function ensureButton() {
     btn.id = BUTTON_ID;
     btn.type = 'button';
     btn.textContent = 'Auto Titles & Description';
-    btn.addEventListener('click', () => void openQuickModal());
-    document.documentElement.appendChild(btn);
+    btn.addEventListener('click', () => void onPillClick());
+    (document.body || document.documentElement).appendChild(btn);
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeAttr(s: string): string {
-  return escapeHtml(s).replace(/'/g, '&#39;');
-}
-
-function removeModal() {
-  document.getElementById('vt-modal-root')?.remove();
-}
-
-function bindKeys(opts: { onEsc: () => void; onEnter?: () => void }): () => void {
-  const handler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      opts.onEsc();
-      return;
-    }
-    if (e.key === 'Enter' && opts.onEnter) {
-      const t = e.target as HTMLElement;
-      if (t.tagName === 'TEXTAREA') return;
-      e.preventDefault();
-      opts.onEnter();
-    }
-  };
-  document.addEventListener('keydown', handler);
-  return () => document.removeEventListener('keydown', handler);
+async function sendMsg<T = unknown>(payload: Record<string, unknown>): Promise<T> {
+  return chrome.runtime.sendMessage(payload) as Promise<T>;
 }
 
 async function getSettings(): Promise<AppSettings> {
-  const res = (await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' })) as {
-    ok: boolean;
-    settings?: AppSettings;
-  };
+  const res = await sendMsg<{ ok: boolean; settings?: AppSettings }>({ type: 'GET_SETTINGS' });
   if (!res?.ok || !res.settings) throw new Error('Could not load settings');
   return res.settings;
 }
 
+async function fetchJob(): Promise<TranslateJob | null> {
+  const res = await sendMsg<{ ok: boolean; job?: TranslateJob | null }>({ type: 'GET_JOB' });
+  return res?.job ?? null;
+}
+
+function connectJobPort() {
+  if (jobPort) return;
+  try {
+    jobPort = chrome.runtime.connect({ name: JOB_PORT });
+  } catch {
+    return;
+  }
+  jobPort.onMessage.addListener((msg: { type?: string; job?: TranslateJob | null }) => {
+    if (msg.type === 'JOB_UPDATE' || msg.type === 'PONG') {
+      currentJob = msg.job ?? null;
+      onJobUpdate(currentJob);
+    }
+  });
+  jobPort.onDisconnect.addListener(() => {
+    jobPort = null;
+    // Reconnect while a job may still be running
+    if (currentJob?.phase === 'running') {
+      setTimeout(() => connectJobPort(), 500);
+    }
+  });
+  if (pingTimer) clearInterval(pingTimer);
+  pingTimer = setInterval(() => {
+    try {
+      jobPort?.postMessage({ type: 'PING' });
+    } catch {
+      /* ignore */
+    }
+  }, 20_000);
+}
+
+function onJobUpdate(job: TranslateJob | null) {
+  currentJob = job;
+  const videoId = getVideoId();
+  if (job && videoId && job.videoId === videoId) {
+    if (uiExpanded) renderJobModal(job);
+    else ensureWidget(job);
+  } else if (!job) {
+    removeWidget();
+    if (uiExpanded && document.getElementById(MODAL_ID)?.dataset.mode === 'job') {
+      minimizeUi();
+    }
+  } else {
+    // Job for another video — still show widget if on studio
+    if (!uiExpanded) ensureWidget(job);
+  }
+}
+
+function removeModal() {
+  unbindModalKeys?.();
+  unbindModalKeys = null;
+  releaseFocusTrap?.();
+  releaseFocusTrap = null;
+  document.getElementById(MODAL_ID)?.remove();
+}
+
+function minimizeUi() {
+  uiExpanded = false;
+  removeModal();
+  if (currentJob) ensureWidget(currentJob);
+}
+
+function expandUi(job: TranslateJob) {
+  uiExpanded = true;
+  removeWidget();
+  renderJobModal(job);
+}
+
+/** Modal closes only via X / Esc / Close — never outside click or scroll. */
+function bindModalChrome(opts: {
+  onClose: () => void;
+  onEnter?: () => void;
+  root: HTMLElement;
+}): void {
+  unbindModalKeys?.();
+  releaseFocusTrap?.();
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      opts.onClose();
+      return;
+    }
+    if (e.key === 'Enter' && opts.onEnter) {
+      const t = e.target as HTMLElement;
+      if (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') return;
+      e.preventDefault();
+      opts.onEnter();
+    }
+    if (e.key === 'Tab') trapFocus(e, opts.root);
+  };
+  document.addEventListener('keydown', onKey, true);
+  unbindModalKeys = () => document.removeEventListener('keydown', onKey, true);
+
+  // Block backdrop click from doing anything (do not close)
+  opts.root.addEventListener('mousedown', (e) => {
+    if (e.target === opts.root) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+  opts.root.addEventListener(
+    'wheel',
+    (e) => {
+      // Allow scroll inside panel; don't let page steal focus / dismiss
+      const panel = opts.root.querySelector('.vt-panel');
+      if (panel && !panel.contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    },
+    { passive: false },
+  );
+
+  const panel = opts.root.querySelector('.vt-panel') as HTMLElement | null;
+  if (panel) {
+    const focusables = () =>
+      [
+        ...panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => el.offsetParent !== null);
+    const first = focusables()[0];
+    first?.focus();
+    releaseFocusTrap = () => {};
+  }
+}
+
+function trapFocus(e: KeyboardEvent, root: HTMLElement) {
+  const panel = root.querySelector('.vt-panel') as HTMLElement | null;
+  if (!panel) return;
+  const list = [
+    ...panel.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  ].filter((el) => el.offsetParent !== null);
+  if (!list.length) return;
+  const first = list[0];
+  const last = list[list.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+async function onPillClick() {
+  const videoId = getVideoId();
+  if (!videoId) return;
+  connectJobPort();
+  const job = await fetchJob();
+  currentJob = job;
+  if (shouldReopenExistingJob(job, videoId)) {
+    expandUi(job!);
+    return;
+  }
+  await openQuickModal();
+}
+
+async function confirmNewTranslation(): Promise<boolean> {
+  if (currentJob?.phase === 'running') {
+    return confirm(
+      'A translation is still running. Stop it and start a new one? Unfinished languages will be left pending.',
+    );
+  }
+  if (currentJob && (currentJob.phase === 'done' || currentJob.phase === 'failed' || currentJob.phase === 'stopped')) {
+    return confirm('Discard the current job results and start a new translation?');
+  }
+  return true;
+}
+
+async function startNewTranslationFromJob() {
+  if (!(await confirmNewTranslation())) return;
+  if (currentJob?.phase === 'running') {
+    await sendMsg({ type: 'STOP_TRANSLATE' });
+  }
+  await sendMsg({ type: 'CLEAR_JOB' });
+  currentJob = null;
+  removeWidget();
+  removeModal();
+  uiExpanded = false;
+  await openQuickModal();
+}
+
+/* ---------- minimized widget ---------- */
+
+function removeWidget() {
+  document.getElementById(WIDGET_ID)?.remove();
+}
+
+function ensureWidget(job: TranslateJob) {
+  let el = document.getElementById(WIDGET_ID) as HTMLElement | null;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = WIDGET_ID;
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    (document.body || document.documentElement).appendChild(el);
+    void placeWidget(el);
+    makeDraggable(el);
+  }
+  paintWidget(el, job);
+}
+
+async function placeWidget(el: HTMLElement) {
+  const res = await sendMsg<{ ok: boolean; pos?: { x: number; y: number } | null }>({
+    type: 'GET_WIDGET_POS',
+  });
+  if (res?.pos) {
+    el.style.left = `${res.pos.x}px`;
+    el.style.top = `${res.pos.y}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+  }
+}
+
+function makeDraggable(el: HTMLElement) {
+  let ox = 0;
+  let oy = 0;
+  let dragging = false;
+  let moved = false;
+
+  el.addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragging = true;
+    moved = false;
+    const r = el.getBoundingClientRect();
+    ox = e.clientX - r.left;
+    oy = e.clientY - r.top;
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    moved = true;
+    const x = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, e.clientX - ox));
+    const y = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, e.clientY - oy));
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+  });
+  el.addEventListener('pointerup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const x = parseFloat(el.style.left || '0');
+    const y = parseFloat(el.style.top || '0');
+    void sendMsg({ type: 'SET_WIDGET_POS', x, y });
+    if (!moved) {
+      // click → expand
+      if (currentJob) expandUi(currentJob);
+    }
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function paintWidget(el: HTMLElement, job: TranslateJob) {
+  const pct = jobPercent(job);
+  const failedN = jobFailed(job).length;
+  let label = '';
+  let icon = '';
+  if (job.phase === 'running') {
+    icon = `<span class="vt-spin" aria-hidden="true"></span>`;
+    label = `Translating ${job.doneCount}/${job.totalCount}`;
+  } else if (failedN) {
+    icon = '⚠';
+    label = `${failedN} failed · ${job.doneCount}/${job.totalCount}`;
+  } else {
+    icon = '✓';
+    label = `Done ${job.doneCount}/${job.totalCount}`;
+  }
+  const review =
+    job.phase !== 'running'
+      ? `<button type="button" class="vt-widget-cta" id="vt-widget-review">Review &amp; publish</button>`
+      : '';
+  el.innerHTML = `
+    <div class="vt-widget-main">
+      <span class="vt-widget-icon">${icon}</span>
+      <span class="vt-widget-label">${escapeHtml(label)}</span>
+    </div>
+    <div class="vt-widget-bar"><div class="vt-widget-fill" style="width:${pct}%"></div></div>
+    ${review}`;
+  el.querySelector('#vt-widget-review')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    expandUi(job);
+  });
+}
+
+/* ---------- connect / picker ---------- */
+
 async function showConnectChannelModal(
   opts: { channelId?: string; channelTitle?: string; error?: string },
-  btn: HTMLButtonElement,
 ): Promise<void> {
   removeModal();
+  uiExpanded = true;
   const root = document.createElement('div');
-  root.id = 'vt-modal-root';
+  root.id = MODAL_ID;
+  root.dataset.mode = 'connect';
   const name = opts.channelTitle || opts.channelId || 'this channel';
   root.innerHTML = `
-    <div class="vt-panel vt-picker">
-      <h2>Connect channel</h2>
+    <div class="vt-panel vt-picker" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+      <div class="vt-panel-head">
+        <h2 id="vt-title">Connect channel</h2>
+        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
+      </div>
       <div class="vt-banner vt-banner-err">
         This video belongs to <strong>${escapeHtml(name)}</strong>, connect it.
       </div>
       <div class="vt-meta">${escapeHtml(opts.error ?? '')}</div>
-      <div class="vt-actions">
+      <div class="vt-footer">
         <button type="button" id="vt-cancel">Cancel</button>
         <button type="button" class="primary" id="vt-connect">Connect</button>
       </div>
     </div>`;
-  document.documentElement.appendChild(root);
+  (document.body || document.documentElement).appendChild(root);
 
   const close = () => {
-    unbind();
+    uiExpanded = false;
     removeModal();
-    btn.disabled = false;
   };
-  let unbind = bindKeys({ onEsc: close });
-
+  bindModalChrome({ root, onClose: close });
+  root.querySelector('#vt-x')!.addEventListener('click', close);
   root.querySelector('#vt-cancel')!.addEventListener('click', close);
   root.querySelector('#vt-connect')!.addEventListener('click', async () => {
     const connectBtn = root.querySelector('#vt-connect') as HTMLButtonElement;
     connectBtn.disabled = true;
     connectBtn.textContent = 'Connecting…';
-    const res = (await chrome.runtime.sendMessage({
+    const res = await sendMsg<{ ok: boolean; error?: string }>({
       type: 'CONNECT_CHANNEL',
       expectedChannelId: opts.channelId,
-    })) as { ok: boolean; error?: string };
+    });
     if (!res?.ok) {
       alert(res?.error ?? 'Connect failed');
       connectBtn.disabled = false;
       connectBtn.textContent = 'Connect';
       return;
     }
-    unbind();
     removeModal();
     void openQuickModal();
   });
@@ -135,33 +434,31 @@ async function openQuickModal() {
   const videoId = getVideoId();
   if (!videoId) return;
 
-  const btn = document.getElementById(BUTTON_ID) as HTMLButtonElement;
-  btn.disabled = true;
-
   removeModal();
+  uiExpanded = true;
   const root = document.createElement('div');
-  root.id = 'vt-modal-root';
+  root.id = MODAL_ID;
+  root.dataset.mode = 'picker';
   root.innerHTML = `
-    <div class="vt-panel vt-picker">
-      <h2>Auto Titles &amp; Description</h2>
+    <div class="vt-panel vt-picker" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+      <div class="vt-panel-head">
+        <h2 id="vt-title">Auto Titles &amp; Description</h2>
+        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
+      </div>
       <div class="vt-meta" id="vt-picker-status">Loading video localizations…</div>
     </div>`;
-  document.documentElement.appendChild(root);
+  (document.body || document.documentElement).appendChild(root);
 
-  let unbind = bindKeys({
-    onEsc: () => {
-      unbind();
-      removeModal();
-      btn.disabled = false;
-    },
-  });
+  const close = () => {
+    uiExpanded = false;
+    removeModal();
+  };
+  bindModalChrome({ root, onClose: close });
+  root.querySelector('#vt-x')?.addEventListener('click', close);
 
   try {
     const settings = await getSettings();
-    const meta = (await chrome.runtime.sendMessage({
-      type: 'FETCH_VIDEO_META',
-      videoId,
-    })) as {
+    const meta = await sendMsg<{
       ok: boolean;
       error?: string;
       needsConnect?: boolean;
@@ -174,18 +471,15 @@ async function openQuickModal() {
         selectedLanguages: string[];
         lastUsedLanguages: string[];
       };
-    };
+    }>({ type: 'FETCH_VIDEO_META', videoId });
 
     if (meta?.needsConnect) {
-      unbind();
-      await showConnectChannelModal(
-        {
-          channelId: meta.channelId,
-          channelTitle: meta.channelTitle,
-          error: meta.error,
-        },
-        btn,
-      );
+      removeModal();
+      await showConnectChannelModal({
+        channelId: meta.channelId,
+        channelTitle: meta.channelTitle,
+        error: meta.error,
+      });
       return;
     }
 
@@ -205,29 +499,36 @@ async function openQuickModal() {
     let dryRun = settings.dryRun;
     let searchQ = '';
 
-    const close = () => {
-      unbind();
-      removeModal();
-      btn.disabled = false;
-    };
-
     const start = async () => {
       const langs = [...selected];
       if (!langs.length) return;
-      await chrome.runtime.sendMessage({
-        type: 'PATCH_SETTINGS',
-        partial: { skipExisting, dryRun },
-      });
+      await sendMsg({ type: 'PATCH_SETTINGS', partial: { skipExisting, dryRun } });
       if (meta.channelId) {
-        await chrome.runtime.sendMessage({
+        await sendMsg({
           type: 'PATCH_CHANNEL_SETTINGS',
           channelId: meta.channelId,
           partial: { selectedLanguages: langs, lastUsedLanguages: langs },
         });
       }
-      unbind();
-      removeModal();
-      await runTranslateFlow(videoId, langs, skipExisting, btn);
+      const res = await sendMsg<{ ok: boolean; error?: string; job?: TranslateJob; skippedAll?: boolean }>({
+        type: 'START_TRANSLATE',
+        videoId,
+        languages: langs,
+        skipExisting,
+      });
+      if (!res?.ok) {
+        alert(`VeilTranslate: ${res?.error ?? 'Unknown error'}`);
+        return;
+      }
+      connectJobPort();
+      currentJob = res.job ?? (await fetchJob());
+      if (res.skippedAll) {
+        alert(
+          'All selected languages already have localizations (Skip existing is on). Switch to Overwrite to re-translate.',
+        );
+        return;
+      }
+      if (currentJob) expandUi(currentJob);
     };
 
     const fillGrid = (grid: HTMLElement) => {
@@ -289,7 +590,10 @@ async function openQuickModal() {
 
     const panel = root.querySelector('.vt-panel') as HTMLElement;
     panel.innerHTML = `
-      <h2>Auto Titles &amp; Description</h2>
+      <div class="vt-panel-head">
+        <h2 id="vt-title">Auto Titles &amp; Description</h2>
+        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
+      </div>
       <div class="vt-meta">
         ${escapeHtml(meta.title?.slice(0, 90) ?? videoId)}
         ${meta.defaultLanguage ? ` · default: ${escapeHtml(meta.defaultLanguage)}` : ''}
@@ -304,7 +608,7 @@ async function openQuickModal() {
         <button type="button" data-preset="all" class="vt-chip">All</button>
         <button type="button" data-preset="last" class="vt-chip">Last used</button>
       </div>
-      <input type="search" id="vt-lang-search" class="vt-search" placeholder="Search languages…" />
+      <input type="search" id="vt-lang-search" class="vt-search" placeholder="Search languages…" aria-label="Search languages" />
       <div class="vt-lang-grid" id="vt-lang-grid"></div>
       <div class="vt-picker-footer">
         <span class="vt-count" id="vt-sel-count"></span>
@@ -320,7 +624,7 @@ async function openQuickModal() {
           dryRun ? 'checked' : ''
         }/> Dry-run</label>
       </div>
-      <div class="vt-actions">
+      <div class="vt-footer">
         <button type="button" id="vt-cancel">Cancel</button>
         <button type="button" class="primary" id="vt-go">Translate</button>
       </div>`;
@@ -329,8 +633,9 @@ async function openQuickModal() {
     fillGrid(grid);
     updateChrome();
 
-    unbind();
-    unbind = bindKeys({ onEsc: close, onEnter: () => void start() });
+    bindModalChrome({ root, onClose: close, onEnter: () => void start() });
+    panel.querySelector('#vt-x')!.addEventListener('click', close);
+    panel.querySelector('#vt-cancel')!.addEventListener('click', close);
 
     panel.querySelector('#vt-lang-search')!.addEventListener('input', (e) => {
       searchQ = (e.target as HTMLInputElement).value.toLowerCase().trim();
@@ -364,268 +669,20 @@ async function openQuickModal() {
 
     panel.querySelector('#vt-dry')!.addEventListener('change', async (e) => {
       dryRun = (e.target as HTMLInputElement).checked;
-      await chrome.runtime.sendMessage({
-        type: 'PATCH_SETTINGS',
-        partial: { dryRun },
-      });
+      await sendMsg({ type: 'PATCH_SETTINGS', partial: { dryRun } });
       const banner = panel.querySelector('#vt-dry-banner') as HTMLElement;
       banner.style.display = dryRun ? 'block' : 'none';
     });
 
-    panel.querySelector('#vt-cancel')!.addEventListener('click', close);
     panel.querySelector('#vt-go')!.addEventListener('click', () => void start());
   } catch (err) {
-    unbind();
     removeModal();
+    uiExpanded = false;
     alert(`VeilTranslate: ${err instanceof Error ? err.message : String(err)}`);
-    btn.disabled = false;
   }
 }
 
-type LangRowState = 'pending' | 'running' | 'ok' | 'failed';
-
-async function runTranslateFlow(
-  videoId: string,
-  languages: string[],
-  skipExisting: boolean,
-  btn: HTMLButtonElement,
-) {
-  btn.disabled = true;
-  const progressRoot = showProgressOverlay(languages);
-  let stoppedByUser = false;
-
-  const setRow = (
-    lang: string,
-    status: LangRowState,
-    error?: string,
-    errorDetail?: string,
-    engine?: string,
-    model?: string,
-    note?: string,
-  ) => {
-    const row = progressRoot.querySelector(`[data-lang="${CSS.escape(lang)}"]`) as HTMLElement | null;
-    if (!row) return;
-    row.dataset.status = status;
-    const label = row.querySelector('.vt-lang-status') as HTMLElement;
-    const eng = row.querySelector('.vt-lang-engine') as HTMLElement | null;
-    const short =
-      status === 'pending'
-        ? 'pending'
-        : status === 'running'
-          ? '…'
-          : status === 'ok'
-            ? 'ok'
-            : 'failed';
-    label.textContent = short;
-    label.className = `vt-lang-status vt-${status === 'ok' ? 'ok' : status === 'failed' ? 'err' : 'muted'}`;
-    if (eng) {
-      const text = note || engineLabel(engine, model);
-      eng.textContent = text;
-      eng.title = text;
-    }
-    const details = row.querySelector('details') as HTMLDetailsElement | null;
-    if (status === 'failed' && (error || errorDetail)) {
-      if (details) {
-        details.style.display = '';
-        const sum = details.querySelector('summary');
-        if (sum) sum.textContent = error ?? 'Error';
-        const pre = details.querySelector('.vt-err-detail');
-        if (pre) pre.textContent = errorDetail ?? error ?? '';
-      }
-    } else if (details) {
-      details.style.display = 'none';
-    }
-  };
-
-  let activeModel = '';
-  let activeEngine = '';
-  const engineSuffix = () => {
-    const label = engineLabel(activeEngine || undefined, activeModel || undefined);
-    return label ? ` · ${label}` : '';
-  };
-
-  const onMsg = (msg: {
-    type?: string;
-    language?: string;
-    index?: number;
-    total?: number;
-    status?: string;
-    message?: string;
-    error?: string;
-    errorDetail?: string;
-    languages?: string[];
-    stopReason?: string;
-    fatalSummary?: string;
-    fatalHint?: string;
-    model?: string;
-    engine?: string;
-    note?: string;
-  }) => {
-    if (msg.type === 'VT_PROGRESS') {
-      // Job-level updates set the header engine; per-language must not switch it.
-      if (!msg.language) {
-        if (msg.model) activeModel = msg.model;
-        if (msg.engine) activeEngine = msg.engine;
-      }
-      if (msg.languages?.length) {
-        // ensure rows exist if background sends full list
-        const list = progressRoot.querySelector('#vt-progress-list');
-        if (list && !list.children.length) {
-          for (const code of msg.languages) {
-            list.append(makeLangRow(code));
-          }
-        }
-      }
-      const el = progressRoot.querySelector('#vt-progress');
-      if (el) {
-        if (msg.fatalSummary) {
-          el.innerHTML = `<strong class="vt-err">${escapeHtml(msg.fatalSummary)}</strong>${
-            msg.fatalHint ? `<div class="vt-hint">${escapeHtml(msg.fatalHint)}</div>` : ''
-          }${activeModel || activeEngine ? `<div class="vt-hint">${escapeHtml(engineLabel(activeEngine, activeModel))}</div>` : ''}`;
-        } else if ((msg.model || msg.engine) && !msg.language) {
-          el.textContent = `Using ${engineLabel(msg.engine ?? activeEngine, msg.model ?? activeModel)}…`;
-        } else if (msg.status === 'running') {
-          el.textContent = `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})${engineSuffix()}…`;
-        } else if (msg.status === 'ok') {
-          el.textContent = `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})${engineSuffix()}`;
-        } else if (msg.status === 'failed' && msg.language) {
-          el.textContent = `Failed ${msg.language}${engineSuffix()}`;
-        }
-      }
-      if (msg.language && msg.status === 'running') {
-        setRow(msg.language, 'running', undefined, undefined, msg.engine, msg.model, msg.note);
-      }
-      if (msg.language && msg.status === 'ok') {
-        setRow(msg.language, 'ok', undefined, undefined, msg.engine, msg.model, msg.note);
-      }
-      if (msg.language && msg.status === 'failed') {
-        setRow(msg.language, 'failed', msg.error, msg.errorDetail, msg.engine, msg.model, msg.note);
-      }
-    }
-    if (msg.type === 'VT_STATUS') {
-      const el = progressRoot.querySelector('#vt-progress');
-      if (el && msg.message) el.textContent = msg.message;
-    }
-  };
-  chrome.runtime.onMessage.addListener(onMsg);
-
-  progressRoot.querySelector('#vt-stop')?.addEventListener('click', () => {
-    stoppedByUser = true;
-    const stopBtn = progressRoot.querySelector('#vt-stop') as HTMLButtonElement;
-    stopBtn.disabled = true;
-    stopBtn.textContent = 'Stopping…';
-    void chrome.runtime.sendMessage({ type: 'STOP_TRANSLATE' });
-  });
-
-  try {
-    const res = (await chrome.runtime.sendMessage({
-      type: 'START_TRANSLATE',
-      videoId,
-      languages,
-      skipExisting,
-    })) as {
-      ok: boolean;
-      error?: string;
-      dryRun?: boolean;
-      skippedAll?: boolean;
-      source?: { title: string; description: string; defaultLanguage?: string };
-      results?: LocalizationResult[];
-      failed?: { language: string; error: string }[];
-      pending?: string[];
-      stopReason?: string | null;
-      fatalSummary?: string;
-      fatalHint?: string;
-    };
-
-    if (!res?.ok) {
-      progressRoot.remove();
-      alert(`VeilTranslate: ${res?.error ?? 'Unknown error'}`);
-      return;
-    }
-
-    if (res.skippedAll) {
-      progressRoot.remove();
-      alert(
-        'All selected languages already have localizations (Skip existing is on). Switch to Overwrite to re-translate.',
-      );
-      return;
-    }
-
-    const results = [...(res.results ?? [])];
-    const failed = res.failed ?? [];
-    const stopReason = res.stopReason ?? null;
-
-    // Fatal/circuit/abort with nothing translated → stay on progress with Retry
-    if (
-      !results.length &&
-      (stopReason === 'fatal' || stopReason === 'circuit' || (stopReason === 'aborted' && !failed.length))
-    ) {
-      showJobStopped(progressRoot, {
-        summary: res.fatalSummary ?? (stoppedByUser || stopReason === 'aborted' ? 'Stopped' : 'Job failed'),
-        hint: res.fatalHint ?? (stopReason === 'aborted' ? 'No further requests will be sent.' : ''),
-        failed,
-        onRetry: () => {
-          progressRoot.remove();
-          void runTranslateFlow(videoId, languages, skipExisting, btn);
-        },
-        onClose: () => progressRoot.remove(),
-        onRetryFailed: failed.length
-          ? () => {
-              progressRoot.remove();
-              void runTranslateFlow(
-                videoId,
-                failed.map((f) => f.language),
-                false,
-                btn,
-              );
-            }
-          : undefined,
-      });
-      return;
-    }
-
-    progressRoot.remove();
-
-    // Partial success (stopped mid-job) still opens preview for successful rows
-    await showPreviewModal({
-      videoId,
-      dryRun: !!res.dryRun,
-      sourceTitle: res.source?.title ?? '',
-      rows: results,
-      failed,
-      stopNote:
-        stopReason === 'circuit'
-          ? res.fatalSummary ?? 'Stopped: 3 languages failed in a row.'
-          : stopReason === 'fatal'
-            ? `${res.fatalSummary ?? 'Fatal error'}${res.fatalHint ? ` — ${res.fatalHint}` : ''}`
-            : stopReason === 'aborted'
-              ? 'Stopped by user. Successful translations below are still editable; Publish still requires an explicit click.'
-              : undefined,
-    });
-  } catch (err) {
-    progressRoot.remove();
-    alert(`VeilTranslate: ${err instanceof Error ? err.message : String(err)}`);
-  } finally {
-    chrome.runtime.onMessage.removeListener(onMsg);
-    btn.disabled = false;
-  }
-}
-
-function makeLangRow(code: string): HTMLElement {
-  const row = document.createElement('div');
-  row.className = 'vt-lang-row';
-  row.dataset.lang = code;
-  row.dataset.status = 'pending';
-  row.innerHTML = `
-    <span class="vt-lang-code">${escapeHtml(code)}</span>
-    <span class="vt-lang-engine vt-muted"></span>
-    <span class="vt-lang-status vt-muted">pending</span>
-    <details style="display:none">
-      <summary>Error</summary>
-      <pre class="vt-err-detail"></pre>
-    </details>`;
-  return row;
-}
+/* ---------- job progress / preview modal ---------- */
 
 function engineLabel(engine?: string, model?: string): string {
   if (!engine) return '';
@@ -633,144 +690,195 @@ function engineLabel(engine?: string, model?: string): string {
   return engine;
 }
 
-function showProgressOverlay(languages: string[]): HTMLElement {
-  removeModal();
-  const root = document.createElement('div');
-  root.id = 'vt-modal-root';
+function renderJobModal(job: TranslateJob) {
+  let root = document.getElementById(MODAL_ID) as HTMLElement | null;
+  const results = jobResults(job);
+  const failed = jobFailed(job);
+  const showPreview = job.phase !== 'running' && results.length > 0;
+
+  if (showPreview) {
+    if (!root) {
+      root = document.createElement('div');
+      root.id = MODAL_ID;
+      (document.body || document.documentElement).appendChild(root);
+    }
+    paintPreview(root, job, results, failed);
+    return;
+  }
+
+  const existingProgress = root?.dataset.mode === 'job' && root.querySelector('#vt-progress-list');
+  if (existingProgress && root && job.phase === 'running') {
+    patchProgressDom(root, job);
+    return;
+  }
+
+  if (!root || root.dataset.mode !== 'job' || !root.querySelector('#vt-progress-list')) {
+    removeModal();
+    root = document.createElement('div');
+    root.id = MODAL_ID;
+    root.dataset.mode = 'job';
+    (document.body || document.documentElement).appendChild(root);
+    buildProgressShell(root, job);
+  } else {
+    patchProgressDom(root, job);
+  }
+}
+
+function buildProgressShell(root: HTMLElement, job: TranslateJob) {
+  const pct = jobPercent(job);
+  const eta = jobEta(job);
+  const failed = jobFailed(job);
+  const rows = job.languages.map((code) => langRowHtml(code, job)).join('');
+  const headerMsg =
+    job.fatalSummary && job.phase !== 'running'
+      ? `<div class="vt-banner vt-banner-err" id="vt-fatal"><strong>${escapeHtml(job.fatalSummary)}</strong>${
+          job.fatalHint ? `<div class="vt-hint">${escapeHtml(job.fatalHint)}</div>` : ''
+        }</div>`
+      : `<div id="vt-fatal" hidden></div>`;
+
   root.innerHTML = `
-    <div class="vt-panel">
-      <h2>Translating…</h2>
-      <div id="vt-progress">Checking API key / model…</div>
-      <div id="vt-progress-list" class="vt-progress-list"></div>
-      <div class="vt-actions">
-        <button type="button" id="vt-stop">Stop</button>
+    <div class="vt-panel vt-job" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+      <div class="vt-panel-head">
+        <h2 id="vt-title">${job.phase === 'running' ? 'Translating…' : 'Translation job'}</h2>
+        <div class="vt-head-actions">
+          <button type="button" class="vt-linkish" id="vt-new">New translation</button>
+          <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Minimize">×</button>
+        </div>
+      </div>
+      <div class="vt-progress-head">
+        <div class="vt-progress-meta" id="vt-progress-meta">
+          <span data-k="pct">${pct}%</span>
+          <span data-k="count">${job.doneCount}/${job.totalCount}</span>
+          <span data-k="eta">${eta ? escapeHtml(eta) : ''}</span>
+          <span data-k="eng" class="vt-muted">${job.engine ? escapeHtml(engineLabel(job.engine, job.model)) : ''}</span>
+        </div>
+        <div class="vt-progress-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+          <div class="vt-progress-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+      ${headerMsg}
+      <div id="vt-progress-list" class="vt-progress-list">${rows}</div>
+      <div class="vt-footer sticky" id="vt-job-footer">
+        ${
+          job.phase === 'running'
+            ? `<button type="button" id="vt-stop">Stop</button>`
+            : failed.length
+              ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${failed.length} failed</button>`
+              : ''
+        }
+        <button type="button" id="vt-minimize">Minimize</button>
       </div>
     </div>`;
-  const list = root.querySelector('#vt-progress-list')!;
-  for (const code of languages) list.append(makeLangRow(code));
-  document.documentElement.appendChild(root);
-  return root;
+
+  bindModalChrome({ root, onClose: minimizeUi });
+  root.querySelector('#vt-x')!.addEventListener('click', minimizeUi);
+  root.querySelector('#vt-minimize')!.addEventListener('click', minimizeUi);
+  root.querySelector('#vt-new')!.addEventListener('click', () => void startNewTranslationFromJob());
+  wireJobFooter(root, job);
 }
 
-function showJobStopped(
-  root: HTMLElement,
-  opts: {
-    summary: string;
-    hint: string;
-    failed: { language: string; error: string }[];
-    onRetry: () => void;
-    onClose: () => void;
-    onRetryFailed?: () => void;
-  },
-) {
-  const panel = root.querySelector('.vt-panel')!;
-  const stopBtn = panel.querySelector('#vt-stop');
-  stopBtn?.remove();
-  const banner = document.createElement('div');
-  banner.className = 'vt-banner vt-banner-err';
-  banner.innerHTML = `<strong>${escapeHtml(opts.summary)}</strong>${
-    opts.hint ? `<div class="vt-hint">${escapeHtml(opts.hint)}</div>` : ''
-  }`;
-  const progress = panel.querySelector('#vt-progress');
-  if (progress) progress.replaceWith(banner);
-  else panel.insertBefore(banner, panel.querySelector('#vt-progress-list'));
+function langRowHtml(code: string, job: TranslateJob): string {
+  const s = job.langStates[code];
+  const status = s?.status ?? 'pending';
+  const eng = s?.note || engineLabel(s?.engine, s?.model);
+  const short =
+    status === 'pending'
+      ? 'pending'
+      : status === 'running'
+        ? '…'
+        : status === 'ok'
+          ? 'ok'
+          : status === 'skipped'
+            ? 'skip'
+            : 'failed';
+  const errBlock =
+    status === 'failed' && (s?.error || s?.errorDetail)
+      ? `<details open><summary>${escapeHtml(s.error ?? 'Error')}</summary><pre class="vt-err-detail">${escapeHtml(s.errorDetail ?? s.error ?? '')}</pre></details>`
+      : '';
+  return `<div class="vt-lang-row" data-lang="${escapeAttr(code)}" data-status="${status}">
+    <span class="vt-lang-code">${escapeHtml(code)}</span>
+    <span class="vt-lang-engine vt-muted" title="${escapeAttr(eng)}">${escapeHtml(eng)}</span>
+    <span class="vt-lang-status vt-${status === 'ok' ? 'ok' : status === 'failed' ? 'err' : 'muted'}">${short}</span>
+    ${errBlock}
+  </div>`;
+}
 
-  let actions = panel.querySelector('.vt-actions');
-  if (!actions) {
-    actions = document.createElement('div');
-    actions.className = 'vt-actions';
-    panel.append(actions);
+function patchProgressDom(root: HTMLElement, job: TranslateJob) {
+  const pct = jobPercent(job);
+  const eta = jobEta(job);
+  const meta = root.querySelector('#vt-progress-meta');
+  if (meta) {
+    meta.querySelector('[data-k="pct"]')!.textContent = `${pct}%`;
+    meta.querySelector('[data-k="count"]')!.textContent = `${job.doneCount}/${job.totalCount}`;
+    meta.querySelector('[data-k="eta"]')!.textContent = eta ?? '';
+    meta.querySelector('[data-k="eng"]')!.textContent = job.engine
+      ? engineLabel(job.engine, job.model)
+      : '';
   }
-  actions.innerHTML = `
-    ${opts.onRetryFailed ? `<button type="button" class="primary" id="vt-retry-failed">Retry failed</button>` : ''}
-    <button type="button" class="primary" id="vt-retry">Retry</button>
-    <button type="button" id="vt-close">Close</button>`;
-  actions.querySelector('#vt-retry')?.addEventListener('click', opts.onRetry);
-  actions.querySelector('#vt-close')?.addEventListener('click', opts.onClose);
-  actions.querySelector('#vt-retry-failed')?.addEventListener('click', () => opts.onRetryFailed?.());
+  const track = root.querySelector('.vt-progress-track') as HTMLElement | null;
+  const fill = root.querySelector('.vt-progress-fill') as HTMLElement | null;
+  if (track) track.setAttribute('aria-valuenow', String(pct));
+  if (fill) fill.style.width = `${pct}%`;
+
+  const title = root.querySelector('#vt-title');
+  if (title) title.textContent = job.phase === 'running' ? 'Translating…' : 'Translation job';
+
+  const list = root.querySelector('#vt-progress-list');
+  if (list) {
+    for (const code of job.languages) {
+      const row = list.querySelector(`[data-lang="${CSS.escape(code)}"]`);
+      const html = langRowHtml(code, job);
+      if (row) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        row.replaceWith(wrap.firstElementChild!);
+      }
+    }
+  }
+
+  if (job.phase !== 'running') {
+    wireJobFooter(root, job);
+  }
 }
 
-async function showPreviewModal(opts: {
-  videoId: string;
-  dryRun: boolean;
-  sourceTitle: string;
-  rows: LocalizationResult[];
-  failed: { language: string; error: string }[];
-  stopNote?: string;
-}): Promise<void> {
-  removeModal();
-  let dryRun = opts.dryRun;
-  const root = document.createElement('div');
-  root.id = 'vt-modal-root';
-  document.documentElement.appendChild(root);
-
-  let resolve!: () => void;
-  const done = new Promise<void>((r) => {
-    resolve = r;
-  });
-
-  let unbindKeys = () => {};
-  const finish = () => {
-    unbindKeys();
-    root.remove();
-    resolve();
-  };
-
-  const retryFailed = (langs: string[]) => {
-    finish();
-    const b = document.getElementById(BUTTON_ID) as HTMLButtonElement;
-    const vid = getVideoId();
-    if (vid) void runTranslateFlow(vid, langs, false, b);
-  };
-
-  const onPublish = async () => {
-    if (dryRun) return;
-    const localizations: LocalizationResult[] = [];
-    root.querySelectorAll('tr[data-i]').forEach((tr) => {
-      const i = Number((tr as HTMLElement).dataset.i);
-      const lang = opts.rows[i].language;
-      const title = (tr.querySelector('.vt-title') as HTMLInputElement).value;
-      const description = (tr.querySelector('.vt-desc') as HTMLTextAreaElement).value;
-      localizations.push({ language: lang, title, description });
-    });
-
-    const pubBtn = root.querySelector('#vt-publish') as HTMLButtonElement;
-    pubBtn.disabled = true;
-    pubBtn.textContent = 'Publishing…';
-    try {
-      const res = (await chrome.runtime.sendMessage({
-        type: 'PUBLISH',
-        videoId: opts.videoId,
-        localizations,
-      })) as { ok: boolean; error?: string; published?: string[] };
-
-      showResult(root, {
-        published: res?.ok ? (res.published ?? []) : [],
-        failed: res?.ok
-          ? opts.failed
-          : localizations.map((l) => ({
-              language: l.language,
-              error: res?.error ?? 'unknown',
-            })),
-        error: res?.ok ? undefined : res?.error,
-        onClose: finish,
-        onRetry: retryFailed,
-      });
-    } catch (err) {
-      showResult(root, {
-        published: [],
-        failed: opts.rows.map((l) => ({
-          language: l.language,
-          error: err instanceof Error ? err.message : String(err),
-        })),
-        onClose: finish,
-        onRetry: retryFailed,
-      });
+function wireJobFooter(root: HTMLElement, job: TranslateJob) {
+  const failed = jobFailed(job);
+  const footer = root.querySelector('#vt-job-footer');
+  if (!footer) return;
+  footer.innerHTML = `
+    ${
+      job.phase === 'running'
+        ? `<button type="button" id="vt-stop">Stop</button>`
+        : failed.length
+          ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${failed.length} failed</button>`
+          : ''
     }
-  };
+    <button type="button" id="vt-minimize">Minimize</button>`;
+  footer.querySelector('#vt-minimize')?.addEventListener('click', minimizeUi);
+  footer.querySelector('#vt-stop')?.addEventListener('click', () => {
+    const btn = footer.querySelector('#vt-stop') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Stopping…';
+    void sendMsg({ type: 'STOP_TRANSLATE' });
+  });
+  footer.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
+    void retryLanguages(
+      job.videoId,
+      failed.map((f) => f.language),
+    );
+  });
+}
+
+function paintPreview(
+  root: HTMLElement,
+  job: TranslateJob,
+  rows: LocalizationResult[],
+  failed: { language: string; error: string }[],
+) {
+  let dryRun = job.dryRun;
 
   const paint = () => {
-    const tableRows = opts.rows
+    const tableRows = rows
       .map((r, i) => {
         const w = charWarning(r.title, r.description);
         return `<tr data-i="${i}">
@@ -787,41 +895,52 @@ async function showPreviewModal(opts: {
       })
       .join('');
 
-    const failedNote = opts.failed.length
-      ? `Failed: ${opts.failed.map((f) => `${f.language} (${f.error})`).join('; ')}`
+    const failedNote = failed.length
+      ? `Failed: ${failed.map((f) => `${f.language} (${f.error})`).join('; ')}`
       : '';
+    const stopNote =
+      job.phase === 'stopped'
+        ? 'Stopped. Successful translations below are still editable.'
+        : job.fatalSummary && job.phase === 'failed'
+          ? job.fatalSummary
+          : '';
 
+    root.dataset.mode = 'job';
     root.innerHTML = `
-      <div class="vt-panel">
-        <h2>Preview translations</h2>
+      <div class="vt-panel vt-job" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+        <div class="vt-panel-head">
+          <h2 id="vt-title">Preview translations</h2>
+          <div class="vt-head-actions">
+            <button type="button" class="vt-linkish" id="vt-new">New translation</button>
+            <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Minimize">×</button>
+          </div>
+        </div>
         <div class="vt-banner vt-banner-dry" style="display:${dryRun ? 'block' : 'none'}">
           Dry-run ON — Publish disabled. Uncheck below to enable publishing.
         </div>
-        ${
-          opts.stopNote
-            ? `<div class="vt-banner vt-banner-err">${escapeHtml(opts.stopNote)}</div>`
-            : ''
-        }
+        ${stopNote ? `<div class="vt-banner vt-banner-err">${escapeHtml(stopNote)}</div>` : ''}
         <div class="vt-meta">
-          Video: ${escapeHtml(opts.videoId)} · Source: ${escapeHtml(opts.sourceTitle.slice(0, 80))}
+          Video: ${escapeHtml(job.videoId)} · Source: ${escapeHtml((job.sourceTitle ?? '').slice(0, 80))}
           ${failedNote ? `<br/>${escapeHtml(failedNote)}` : ''}
         </div>
         <label class="vt-check vt-dry-inline">
           <input type="checkbox" id="vt-dry-preview" ${dryRun ? 'checked' : ''}/> Dry-run (preview only)
         </label>
-        <table>
-          <thead><tr><th>Language</th><th>Title</th><th>Description</th></tr></thead>
-          <tbody>${tableRows || '<tr><td colspan="3">No translations</td></tr>'}</tbody>
-        </table>
-        <div class="vt-actions">
-          <button type="button" id="vt-cancel">${opts.failed.length ? 'Close' : 'Cancel'}</button>
+        <div class="vt-table-wrap">
+          <table>
+            <thead><tr><th>Language</th><th>Title</th><th>Description</th></tr></thead>
+            <tbody>${tableRows || '<tr><td colspan="3">No translations</td></tr>'}</tbody>
+          </table>
+        </div>
+        <div class="vt-footer sticky">
+          <button type="button" id="vt-minimize">Minimize</button>
           ${
-            opts.failed.length
-              ? `<button type="button" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
+            failed.length
+              ? `<button type="button" id="vt-retry-failed">Retry ${failed.length} failed</button>`
               : ''
           }
           <button type="button" class="primary" id="vt-publish" ${
-            dryRun || !opts.rows.length ? 'disabled' : ''
+            dryRun || !rows.length ? 'disabled' : ''
           }>Publish</button>
         </div>
       </div>`;
@@ -842,106 +961,173 @@ async function showPreviewModal(opts: {
       descInput.addEventListener('input', update);
     });
 
+    const onPublish = async () => {
+      if (dryRun) return;
+      const localizations: LocalizationResult[] = [];
+      root.querySelectorAll('tr[data-i]').forEach((tr) => {
+        const i = Number((tr as HTMLElement).dataset.i);
+        const lang = rows[i].language;
+        const title = (tr.querySelector('.vt-title') as HTMLInputElement).value;
+        const description = (tr.querySelector('.vt-desc') as HTMLTextAreaElement).value;
+        localizations.push({ language: lang, title, description });
+      });
+      const pubBtn = root.querySelector('#vt-publish') as HTMLButtonElement;
+      pubBtn.disabled = true;
+      pubBtn.textContent = 'Publishing…';
+      try {
+        const res = await sendMsg<{ ok: boolean; error?: string; published?: string[] }>({
+          type: 'PUBLISH',
+          videoId: job.videoId,
+          localizations,
+        });
+        showResultPanel(root, {
+          published: res?.ok ? (res.published ?? []) : [],
+          failed: res?.ok
+            ? failed
+            : localizations.map((l) => ({
+                language: l.language,
+                error: res?.error ?? 'unknown',
+              })),
+          error: res?.ok ? undefined : res?.error,
+        });
+      } catch (err) {
+        showResultPanel(root, {
+          published: [],
+          failed: rows.map((l) => ({
+            language: l.language,
+            error: err instanceof Error ? err.message : String(err),
+          })),
+        });
+      }
+    };
+
+    bindModalChrome({
+      root,
+      onClose: minimizeUi,
+      onEnter: () => {
+        const pub = root.querySelector('#vt-publish') as HTMLButtonElement | null;
+        if (pub && !pub.disabled) void onPublish();
+      },
+    });
+    root.querySelector('#vt-x')!.addEventListener('click', minimizeUi);
+    root.querySelector('#vt-minimize')!.addEventListener('click', minimizeUi);
+    root.querySelector('#vt-new')!.addEventListener('click', () => void startNewTranslationFromJob());
     root.querySelector('#vt-dry-preview')!.addEventListener('change', async (e) => {
       dryRun = (e.target as HTMLInputElement).checked;
-      await chrome.runtime.sendMessage({
-        type: 'PATCH_SETTINGS',
-        partial: { dryRun },
-      });
+      await sendMsg({ type: 'PATCH_SETTINGS', partial: { dryRun } });
       paint();
     });
-    root.querySelector('#vt-cancel')!.addEventListener('click', finish);
     root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
-      retryFailed(opts.failed.map((f) => f.language));
+      void retryLanguages(
+        job.videoId,
+        failed.map((f) => f.language),
+      );
     });
     root.querySelector('#vt-publish')!.addEventListener('click', () => void onPublish());
   };
 
-  if (!opts.rows.length && opts.failed.length) {
-    root.innerHTML = `<div class="vt-panel"></div>`;
-    showResult(root, {
-      published: [],
-      failed: opts.failed,
-      onClose: finish,
-      onRetry: retryFailed,
-    });
-  } else {
-    paint();
+  if (!rows.length && failed.length) {
+    root.dataset.mode = 'job';
+    showResultPanel(root, { published: [], failed });
+    return;
   }
-
-  unbindKeys = bindKeys({
-    onEsc: finish,
-    onEnter: () => {
-      const pub = root.querySelector('#vt-publish') as HTMLButtonElement | null;
-      if (pub && !pub.disabled) void onPublish();
-      const retry = root.querySelector('#vt-retry-failed') as HTMLButtonElement | null;
-      if (retry) retry.click();
-    },
-  });
-
-  await done;
+  paint();
 }
 
-function showResult(
+function showResultPanel(
   root: HTMLElement,
   opts: {
     published: string[];
     failed: { language: string; error: string }[];
     error?: string;
-    onClose: () => void;
-    onRetry: (langs: string[]) => void;
   },
 ) {
-  const panel = root.querySelector('.vt-panel') ?? root;
-  const target = panel.classList?.contains('vt-panel')
-    ? panel
-    : (() => {
-        root.innerHTML = `<div class="vt-panel"></div>`;
-        return root.querySelector('.vt-panel')!;
-      })();
-
-  target.innerHTML = `
-    <h2>Result</h2>
-    ${opts.error ? `<p class="vt-err">${escapeHtml(opts.error)}</p>` : ''}
-    ${
-      opts.published.length
-        ? `<p class="vt-ok">OK: ${escapeHtml(opts.published.join(', '))}</p>`
-        : ''
-    }
-    ${
-      opts.failed.length
-        ? `<p class="vt-err">Failed: ${escapeHtml(
-            opts.failed.map((f) => `${f.language} (${f.error})`).join('; '),
-          )}</p>`
-        : ''
-    }
-    ${
-      !opts.published.length && !opts.failed.length
-        ? '<p class="vt-meta">Nothing published.</p>'
-        : ''
-    }
-    <div class="vt-actions">
+  root.innerHTML = `
+    <div class="vt-panel vt-job" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+      <div class="vt-panel-head">
+        <h2 id="vt-title">Result</h2>
+        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Minimize">×</button>
+      </div>
+      ${opts.error ? `<p class="vt-err">${escapeHtml(opts.error)}</p>` : ''}
       ${
-        opts.failed.length
-          ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
+        opts.published.length
+          ? `<p class="vt-ok">OK: ${escapeHtml(opts.published.join(', '))}</p>`
           : ''
       }
-      <button type="button" id="vt-done">Done</button>
+      ${
+        opts.failed.length
+          ? `<p class="vt-err">Failed: ${escapeHtml(
+              opts.failed.map((f) => `${f.language} (${f.error})`).join('; '),
+            )}</p>`
+          : ''
+      }
+      ${
+        !opts.published.length && !opts.failed.length
+          ? '<p class="vt-meta">Nothing published.</p>'
+          : ''
+      }
+      <div class="vt-footer sticky">
+        ${
+          opts.failed.length
+            ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
+            : ''
+        }
+        <button type="button" id="vt-minimize">Minimize</button>
+        <button type="button" id="vt-done">Done</button>
+      </div>
     </div>`;
-
-  target.querySelector('#vt-done')?.addEventListener('click', opts.onClose);
-  target.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
-    opts.onRetry(opts.failed.map((f) => f.language));
+  bindModalChrome({ root, onClose: minimizeUi });
+  root.querySelector('#vt-x')!.addEventListener('click', minimizeUi);
+  root.querySelector('#vt-minimize')!.addEventListener('click', minimizeUi);
+  root.querySelector('#vt-done')!.addEventListener('click', async () => {
+    await sendMsg({ type: 'CLEAR_JOB' });
+    currentJob = null;
+    removeWidget();
+    minimizeUi();
   });
+  root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
+    const vid = getVideoId() || currentJob?.videoId;
+    if (vid) void retryLanguages(vid, opts.failed.map((f) => f.language));
+  });
+}
+
+async function retryLanguages(videoId: string, languages: string[]) {
+  const res = await sendMsg<{ ok: boolean; error?: string; job?: TranslateJob }>({
+    type: 'START_TRANSLATE',
+    videoId,
+    languages,
+    skipExisting: false,
+  });
+  if (!res?.ok) {
+    alert(`VeilTranslate: ${res?.error ?? 'Retry failed'}`);
+    return;
+  }
+  connectJobPort();
+  currentJob = res.job ?? (await fetchJob());
+  if (currentJob) expandUi(currentJob);
+}
+
+/* ---------- boot ---------- */
+
+async function bootJobUi() {
+  connectJobPort();
+  const job = await fetchJob();
+  currentJob = job;
+  if (job) {
+    ensureWidget(job);
+  }
 }
 
 let lastUrl = location.href;
 function watchSpa() {
   ensureButton();
+  void bootJobUi();
   const obs = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       ensureButton();
+      // SPA nav: keep widget; don't tear down job
+      if (currentJob && !uiExpanded) ensureWidget(currentJob);
     } else {
       ensureButton();
     }

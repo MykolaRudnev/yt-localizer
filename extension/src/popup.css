@@ -226,3 +226,51 @@ button.linkish {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+.job-section {
+  border-color: #3b82f6;
+}
+
+.job-summary {
+  font-size: 0.88rem;
+  margin-bottom: 0.5rem;
+}
+
+.job-line {
+  margin-bottom: 0.25rem;
+}
+
+.job-line code {
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.job-bar {
+  height: 6px;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.65rem;
+  border: 1px solid var(--border);
+}
+
+.job-fill {
+  height: 100%;
+  width: 0;
+  background: #3b82f6;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.job-fill[data-phase='done'] {
+  background: var(--accent);
+}
+
+.job-fill[data-phase='failed'],
+.job-fill[data-phase='stopped'] {
+  background: var(--danger);
+}
+
+#openStudio {
+  width: 100%;
+}
