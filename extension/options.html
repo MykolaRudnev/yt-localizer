@@ -35,6 +35,18 @@
           <input id="geminiApiKey" type="password" autocomplete="off" />
         </label>
         <label>
+          Gemini model
+          <input id="geminiModel" type="text" placeholder="auto (newest flash)" autocomplete="off" list="geminiModelList" />
+        </label>
+        <div class="row-actions">
+          <button type="button" id="loadGeminiModels">Load models</button>
+          <select id="geminiModelSelect" aria-label="Loaded Gemini models">
+            <option value="">— load models to pick —</option>
+          </select>
+        </div>
+        <p class="hint" id="geminiModelHint">Leave empty for auto-pick of the newest *-flash model. Fallback alias: gemini-flash-latest.</p>
+        <datalist id="geminiModelList"></datalist>
+        <label>
           DeepL Free API key
           <input id="deeplApiKey" type="password" autocomplete="off" />
         </label>

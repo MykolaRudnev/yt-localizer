@@ -303,6 +303,8 @@ async function openQuickModal() {
   }
 }
 
+type LangRowState = 'pending' | 'running' | 'ok' | 'failed';
+
 async function runTranslateFlow(
   videoId: string,
   languages: string[],
@@ -310,7 +312,43 @@ async function runTranslateFlow(
   btn: HTMLButtonElement,
 ) {
   btn.disabled = true;
-  const progressRoot = showProgressOverlay();
+  const progressRoot = showProgressOverlay(languages);
+  let stoppedByUser = false;
+
+  const setRow = (
+    lang: string,
+    status: LangRowState,
+    error?: string,
+    errorDetail?: string,
+  ) => {
+    const row = progressRoot.querySelector(`[data-lang="${CSS.escape(lang)}"]`) as HTMLElement | null;
+    if (!row) return;
+    row.dataset.status = status;
+    const label = row.querySelector('.vt-lang-status') as HTMLElement;
+    const short =
+      status === 'pending'
+        ? 'pending'
+        : status === 'running'
+          ? '…'
+          : status === 'ok'
+            ? 'ok'
+            : 'failed';
+    label.textContent = short;
+    label.className = `vt-lang-status vt-${status === 'ok' ? 'ok' : status === 'failed' ? 'err' : 'muted'}`;
+    const details = row.querySelector('details') as HTMLDetailsElement | null;
+    if (status === 'failed' && (error || errorDetail)) {
+      if (details) {
+        details.style.display = '';
+        const sum = details.querySelector('summary');
+        if (sum) sum.textContent = error ?? 'Error';
+        const pre = details.querySelector('.vt-err-detail');
+        if (pre) pre.textContent = errorDetail ?? error ?? '';
+      }
+    } else if (details) {
+      details.style.display = 'none';
+    }
+  };
+
   const onMsg = (msg: {
     type?: string;
     language?: string;
@@ -319,26 +357,40 @@ async function runTranslateFlow(
     status?: string;
     message?: string;
     error?: string;
+    errorDetail?: string;
+    languages?: string[];
+    stopReason?: string;
+    fatalSummary?: string;
+    fatalHint?: string;
   }) => {
     if (msg.type === 'VT_PROGRESS') {
+      if (msg.languages?.length) {
+        // ensure rows exist if background sends full list
+        const list = progressRoot.querySelector('#vt-progress-list');
+        if (list && !list.children.length) {
+          for (const code of msg.languages) {
+            list.append(makeLangRow(code));
+          }
+        }
+      }
       const el = progressRoot.querySelector('#vt-progress');
       if (el) {
-        el.textContent =
-          msg.status === 'running'
-            ? `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})…`
-            : msg.status === 'ok'
-              ? `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})`
-              : `Failed ${msg.language}`;
+        if (msg.fatalSummary) {
+          el.innerHTML = `<strong class="vt-err">${escapeHtml(msg.fatalSummary)}</strong>${
+            msg.fatalHint ? `<div class="vt-hint">${escapeHtml(msg.fatalHint)}</div>` : ''
+          }`;
+        } else if (msg.status === 'running') {
+          el.textContent = `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})…`;
+        } else if (msg.status === 'ok') {
+          el.textContent = `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})`;
+        } else if (msg.status === 'failed' && msg.language) {
+          el.textContent = `Failed ${msg.language}`;
+        }
       }
-      const list = progressRoot.querySelector('#vt-progress-list');
-      if (list && msg.language && msg.status && msg.status !== 'running') {
-        const li = document.createElement('div');
-        li.className = msg.status === 'ok' ? 'vt-ok' : 'vt-err';
-        li.textContent =
-          msg.status === 'ok'
-            ? `✓ ${msg.language}`
-            : `✗ ${msg.language}: ${msg.error ?? msg.status}`;
-        list.append(li);
+      if (msg.language && msg.status === 'running') setRow(msg.language, 'running');
+      if (msg.language && msg.status === 'ok') setRow(msg.language, 'ok');
+      if (msg.language && msg.status === 'failed') {
+        setRow(msg.language, 'failed', msg.error, msg.errorDetail);
       }
     }
     if (msg.type === 'VT_STATUS') {
@@ -347,6 +399,14 @@ async function runTranslateFlow(
     }
   };
   chrome.runtime.onMessage.addListener(onMsg);
+
+  progressRoot.querySelector('#vt-stop')?.addEventListener('click', () => {
+    stoppedByUser = true;
+    const stopBtn = progressRoot.querySelector('#vt-stop') as HTMLButtonElement;
+    stopBtn.disabled = true;
+    stopBtn.textContent = 'Stopping…';
+    void chrome.runtime.sendMessage({ type: 'STOP_TRANSLATE' });
+  });
 
   try {
     const res = (await chrome.runtime.sendMessage({
@@ -362,28 +422,76 @@ async function runTranslateFlow(
       source?: { title: string; description: string; defaultLanguage?: string };
       results?: LocalizationResult[];
       failed?: { language: string; error: string }[];
+      pending?: string[];
+      stopReason?: string | null;
+      fatalSummary?: string;
+      fatalHint?: string;
     };
 
-    progressRoot.remove();
-
     if (!res?.ok) {
+      progressRoot.remove();
       alert(`VeilTranslate: ${res?.error ?? 'Unknown error'}`);
       return;
     }
 
     if (res.skippedAll) {
+      progressRoot.remove();
       alert(
         'All selected languages already have localizations (Skip existing is on). Switch to Overwrite to re-translate.',
       );
       return;
     }
 
+    const results = [...(res.results ?? [])];
+    const failed = res.failed ?? [];
+    const stopReason = res.stopReason ?? null;
+
+    // Fatal/circuit/abort with nothing translated → stay on progress with Retry
+    if (
+      !results.length &&
+      (stopReason === 'fatal' || stopReason === 'circuit' || (stopReason === 'aborted' && !failed.length))
+    ) {
+      showJobStopped(progressRoot, {
+        summary: res.fatalSummary ?? (stoppedByUser || stopReason === 'aborted' ? 'Stopped' : 'Job failed'),
+        hint: res.fatalHint ?? (stopReason === 'aborted' ? 'No further requests will be sent.' : ''),
+        failed,
+        onRetry: () => {
+          progressRoot.remove();
+          void runTranslateFlow(videoId, languages, skipExisting, btn);
+        },
+        onClose: () => progressRoot.remove(),
+        onRetryFailed: failed.length
+          ? () => {
+              progressRoot.remove();
+              void runTranslateFlow(
+                videoId,
+                failed.map((f) => f.language),
+                false,
+                btn,
+              );
+            }
+          : undefined,
+      });
+      return;
+    }
+
+    progressRoot.remove();
+
+    // Partial success (stopped mid-job) still opens preview for successful rows
     await showPreviewModal({
       videoId,
       dryRun: !!res.dryRun,
       sourceTitle: res.source?.title ?? '',
-      rows: [...(res.results ?? [])],
-      failed: res.failed ?? [],
+      rows: results,
+      failed,
+      stopNote:
+        stopReason === 'circuit'
+          ? res.fatalSummary ?? 'Stopped: 3 languages failed in a row.'
+          : stopReason === 'fatal'
+            ? `${res.fatalSummary ?? 'Fatal error'}${res.fatalHint ? ` — ${res.fatalHint}` : ''}`
+            : stopReason === 'aborted'
+              ? 'Stopped by user. Successful translations below are still editable; Publish still requires an explicit click.'
+              : undefined,
     });
   } catch (err) {
     progressRoot.remove();
@@ -394,18 +502,76 @@ async function runTranslateFlow(
   }
 }
 
-function showProgressOverlay(): HTMLElement {
+function makeLangRow(code: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'vt-lang-row';
+  row.dataset.lang = code;
+  row.dataset.status = 'pending';
+  row.innerHTML = `
+    <span class="vt-lang-code">${escapeHtml(code)}</span>
+    <span class="vt-lang-status vt-muted">pending</span>
+    <details style="display:none">
+      <summary>Error</summary>
+      <pre class="vt-err-detail"></pre>
+    </details>`;
+  return row;
+}
+
+function showProgressOverlay(languages: string[]): HTMLElement {
   removeModal();
   const root = document.createElement('div');
   root.id = 'vt-modal-root';
   root.innerHTML = `
     <div class="vt-panel">
       <h2>Translating…</h2>
-      <div id="vt-progress">Starting…</div>
+      <div id="vt-progress">Checking API key / model…</div>
       <div id="vt-progress-list" class="vt-progress-list"></div>
+      <div class="vt-actions">
+        <button type="button" id="vt-stop">Stop</button>
+      </div>
     </div>`;
+  const list = root.querySelector('#vt-progress-list')!;
+  for (const code of languages) list.append(makeLangRow(code));
   document.documentElement.appendChild(root);
   return root;
+}
+
+function showJobStopped(
+  root: HTMLElement,
+  opts: {
+    summary: string;
+    hint: string;
+    failed: { language: string; error: string }[];
+    onRetry: () => void;
+    onClose: () => void;
+    onRetryFailed?: () => void;
+  },
+) {
+  const panel = root.querySelector('.vt-panel')!;
+  const stopBtn = panel.querySelector('#vt-stop');
+  stopBtn?.remove();
+  const banner = document.createElement('div');
+  banner.className = 'vt-banner vt-banner-err';
+  banner.innerHTML = `<strong>${escapeHtml(opts.summary)}</strong>${
+    opts.hint ? `<div class="vt-hint">${escapeHtml(opts.hint)}</div>` : ''
+  }`;
+  const progress = panel.querySelector('#vt-progress');
+  if (progress) progress.replaceWith(banner);
+  else panel.insertBefore(banner, panel.querySelector('#vt-progress-list'));
+
+  let actions = panel.querySelector('.vt-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.className = 'vt-actions';
+    panel.append(actions);
+  }
+  actions.innerHTML = `
+    ${opts.onRetryFailed ? `<button type="button" class="primary" id="vt-retry-failed">Retry failed</button>` : ''}
+    <button type="button" class="primary" id="vt-retry">Retry</button>
+    <button type="button" id="vt-close">Close</button>`;
+  actions.querySelector('#vt-retry')?.addEventListener('click', opts.onRetry);
+  actions.querySelector('#vt-close')?.addEventListener('click', opts.onClose);
+  actions.querySelector('#vt-retry-failed')?.addEventListener('click', () => opts.onRetryFailed?.());
 }
 
 async function showPreviewModal(opts: {
@@ -414,6 +580,7 @@ async function showPreviewModal(opts: {
   sourceTitle: string;
   rows: LocalizationResult[];
   failed: { language: string; error: string }[];
+  stopNote?: string;
 }): Promise<void> {
   removeModal();
   let dryRun = opts.dryRun;
@@ -514,6 +681,11 @@ async function showPreviewModal(opts: {
         <div class="vt-banner vt-banner-dry" style="display:${dryRun ? 'block' : 'none'}">
           Dry-run ON — Publish disabled. Uncheck below to enable publishing.
         </div>
+        ${
+          opts.stopNote
+            ? `<div class="vt-banner vt-banner-err">${escapeHtml(opts.stopNote)}</div>`
+            : ''
+        }
         <div class="vt-meta">
           Video: ${escapeHtml(opts.videoId)} · Source: ${escapeHtml(opts.sourceTitle.slice(0, 80))}
           ${failedNote ? `<br/>${escapeHtml(failedNote)}` : ''}
@@ -526,7 +698,12 @@ async function showPreviewModal(opts: {
           <tbody>${tableRows || '<tr><td colspan="3">No translations</td></tr>'}</tbody>
         </table>
         <div class="vt-actions">
-          <button type="button" id="vt-cancel">Cancel</button>
+          <button type="button" id="vt-cancel">${opts.failed.length ? 'Close' : 'Cancel'}</button>
+          ${
+            opts.failed.length
+              ? `<button type="button" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
+              : ''
+          }
           <button type="button" class="primary" id="vt-publish" ${
             dryRun || !opts.rows.length ? 'disabled' : ''
           }>Publish</button>
@@ -558,6 +735,9 @@ async function showPreviewModal(opts: {
       paint();
     });
     root.querySelector('#vt-cancel')!.addEventListener('click', finish);
+    root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
+      retryFailed(opts.failed.map((f) => f.language));
+    });
     root.querySelector('#vt-publish')!.addEventListener('click', () => void onPublish());
   };
 

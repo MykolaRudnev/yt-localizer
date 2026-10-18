@@ -9,6 +9,8 @@ export interface TranslateOptions {
   hashtagMode: HashtagMode;
   chapterMode: ChapterMode;
   titleOver100: TitleOver100;
+  /** Abort in-flight engine requests when the job is stopped. */
+  signal?: AbortSignal;
 }
 
 export interface LocalizationResult {
@@ -32,9 +34,14 @@ export interface TranslationEngine {
 export interface EngineConfig {
   engine: EngineId;
   geminiApiKey?: string;
+  /** Explicit model id, or empty/"auto" for runtime auto-pick. */
+  geminiModel?: string;
+  /** Cached auto-picked model from a previous list+pick. */
+  geminiAutoModel?: string;
   deeplApiKey?: string;
   libreTranslateUrl?: string;
   libreTranslateApiKey?: string;
+  onGeminiModelResolved?: (model: string) => void | Promise<void>;
 }
 
 export interface AppSettings {
@@ -43,6 +50,10 @@ export interface AppSettings {
   lastUsedLanguages: string[];
   engine: EngineId;
   geminiApiKey: string;
+  /**
+   * Gemini model id (e.g. gemini-2.5-flash). Empty or "auto" = auto-pick newest flash.
+   */
+  geminiModel: string;
   deeplApiKey: string;
   libreTranslateUrl: string;
   libreTranslateApiKey: string;
@@ -76,6 +87,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lastUsedLanguages: [...TOP10_DEFAULT],
   engine: 'gemini',
   geminiApiKey: '',
+  geminiModel: '',
   deeplApiKey: '',
   libreTranslateUrl: 'http://localhost:5000',
   libreTranslateApiKey: '',
