@@ -16,9 +16,9 @@ App / tool surfaces only (no marketing pages).
   chip vs outline presets, progress density.
 
 ## Theme
-Custom **Veil** — tuned for the “Veil of Veles” channel voice: dark, mystical,
-restrained. Clear blue accent (hue ~245), cool blue-grey neutrals. Never purple
-gradients, glassmorphism, or decorative emoji chrome.
+Custom **Veil** — dark Studio-adjacent UI: cool blue-grey neutrals, clear blue
+accent (hue ~245), restrained. Never purple gradients, glassmorphism, or
+decorative emoji chrome.
 
 - `--color-paper`     oklch(15% 0.014 250)
 - `--color-paper-2`   oklch(19% 0.016 250)

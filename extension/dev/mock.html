@@ -6,7 +6,6 @@
     <title>VeilTranslate mock harness (dev)</title>
     <style>
       :root {
-        /* Hallmark Veil tokens (mock mirror) */
         --bg: oklch(15% 0.014 250);
         --panel: oklch(19% 0.016 250);
         --text: oklch(94% 0.010 250);
@@ -21,38 +20,47 @@
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        background: #2a2a2a;
+        background: #1a1c20;
         color: var(--text);
-        padding: 24px;
+        padding: 32px;
       }
-      h1.dev-title { color: #fff; font-size: 1rem; margin: 0 0 1rem; opacity: 0.7; }
+      h1.dev-title { color: #9aa3ad; font-size: 0.95rem; margin: 0 0 1.25rem; font-weight: 500; }
       .shot {
-        margin: 0 0 48px;
-        background: #111;
-        padding: 24px;
-        border-radius: 8px;
+        margin: 0 0 56px;
+        background: #0c0d10;
+        padding: 28px;
+        border-radius: 10px;
+        border: 1px solid #22262c;
       }
       .shot-label {
-        color: #888;
-        font-size: 0.75rem;
-        margin-bottom: 12px;
+        color: #6b7280;
+        font-size: 0.72rem;
+        margin-bottom: 14px;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.08em;
       }
       .studio-bg {
-        background: #0f0f0f;
-        min-height: 280px;
+        background:
+          radial-gradient(ellipse 80% 60% at 20% 0%, #1a2330 0%, transparent 55%),
+          #0f0f0f;
+        min-height: 300px;
         position: relative;
-        border-radius: 4px;
-        padding: 24px;
+        border-radius: 6px;
+        padding: 28px;
+        border: 1px solid #222;
+      }
+      .studio-chrome {
+        color: #555;
+        font-size: 0.8rem;
+        margin-bottom: 1rem;
       }
 
       .vt-frame {
-        background: rgba(0, 0, 0, 0.6);
-        padding: 24px;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 28px;
         display: flex;
         justify-content: center;
-        border-radius: 4px;
+        border-radius: 6px;
       }
       .vt-panel {
         background: var(--panel);
@@ -63,9 +71,10 @@
         border: 1px solid var(--border);
         display: flex;
         flex-direction: column;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
       }
-      .vt-panel.picker { width: 720px; height: auto; }
+      .vt-panel.picker { width: 760px; height: auto; min-height: 480px; }
+      .vt-panel.preview { height: 560px; }
       .vt-panel-head {
         display: flex;
         align-items: center;
@@ -74,16 +83,12 @@
       }
       .vt-panel h2 {
         margin: 0; font-size: 1.15rem; font-family: var(--font-display);
-        font-style: normal; letter-spacing: -0.02em;
+        letter-spacing: -0.02em;
       }
       .vt-icon-btn {
         width: 2rem; height: 2rem; border-radius: 6px;
         border: 1px solid var(--border); background: var(--bg); color: var(--text);
-        font-size: 1.25rem; cursor: pointer;
-      }
-      .vt-linkish {
-        background: transparent; border: none; color: var(--muted);
-        text-decoration: underline; font-size: 0.82rem; margin-right: 0.5rem;
+        font-size: 1.25rem; cursor: default;
       }
       .vt-meta { color: var(--muted); font-size: 0.9rem; margin: 0 1.25rem 0.75rem; }
       .vt-banner-dry {
@@ -95,14 +100,19 @@
         border-radius: 6px; border: 1px solid var(--border); background: var(--bg);
         color: var(--text); padding: 0.4rem 0.7rem; font-size: 0.82rem;
       }
+      .vt-chip.active {
+        border-color: var(--accent);
+        background: color-mix(in oklch, var(--accent) 22%, var(--bg));
+        color: #fff;
+      }
       .vt-search {
         width: calc(100% - 2.5rem); margin: 0 1.25rem 0.65rem; background: var(--bg);
         color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.65rem;
       }
       .vt-lang-grid {
-        max-height: 200px; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr;
-        gap: 0.25rem 0.5rem; margin: 0 1.25rem 0.85rem; border: 1px solid var(--border);
-        border-radius: 8px; padding: 0.5rem; background: var(--bg);
+        max-height: 220px; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr;
+        gap: 0.3rem 0.5rem; margin: 0 1.25rem 0.85rem; border: 1px solid var(--border);
+        border-radius: 8px; padding: 0.55rem; background: var(--bg);
       }
       .vt-lang-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; }
       .vt-badge {
@@ -124,19 +134,19 @@
         border: 1px solid var(--border);
       }
       .vt-progress-fill {
-        height: 100%; width: 14%; background: var(--accent);
+        height: 100%; width: 40%; background: var(--accent);
       }
       .vt-progress-list {
         flex: 1; overflow: hidden; margin: 0 1.25rem; border: 1px solid var(--border);
         border-radius: 8px; background: var(--bg); font-size: 0.85rem;
       }
       .vt-lang-row {
-        display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) 4rem;
-        gap: 0.35rem; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border);
+        display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) 4.5rem;
+        gap: 0.35rem; padding: 0.4rem 0.55rem; border-bottom: 1px solid var(--border);
       }
       .vt-muted { color: var(--muted); }
       .vt-ok { color: var(--accent); }
-      .vt-err { color: var(--danger); }
+      .vt-run { color: #9ec9e8; }
       .vt-footer {
         display: flex; gap: 0.6rem; justify-content: flex-end;
         padding: 0.85rem 1.25rem 1.1rem; border-top: 1px solid var(--border); margin-top: auto;
@@ -149,12 +159,33 @@
         background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
       }
 
+      /* Preview table */
+      .vt-table-wrap {
+        flex: 1; overflow: hidden; margin: 0 1.25rem; border: 1px solid var(--border);
+        border-radius: 8px; background: var(--bg);
+      }
+      table.vt-preview {
+        width: 100%; border-collapse: collapse; font-size: 0.82rem;
+      }
+      table.vt-preview th {
+        text-align: left; padding: 0.45rem 0.55rem; color: var(--muted);
+        border-bottom: 1px solid var(--border); font-weight: 600;
+      }
+      table.vt-preview td {
+        padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border); vertical-align: top;
+      }
+      table.vt-preview input, table.vt-preview textarea {
+        width: 100%; background: transparent; border: 1px solid transparent;
+        color: var(--text); font: inherit; resize: none;
+      }
+      table.vt-preview .lang { color: var(--accent); font-weight: 600; width: 3rem; }
+
       /* Widget */
       #vt-job-widget {
-        position: absolute; right: 20px; bottom: 24px; width: 220px;
+        position: absolute; right: 24px; bottom: 28px; width: 230px;
         background: var(--panel); color: var(--text); border: 1px solid var(--border);
-        border-radius: 12px; padding: 0.65rem 0.75rem; font: 500 12px/1.3 inherit;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        border-radius: 12px; padding: 0.7rem 0.8rem; font: 500 12px/1.3 inherit;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
       }
       .vt-widget-main { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.4rem; }
       .vt-spin {
@@ -162,15 +193,20 @@
         border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%;
       }
       .vt-widget-bar { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; border: 1px solid var(--border); }
-      .vt-widget-fill { height: 100%; width: 14%; background: var(--accent); }
+      .vt-widget-fill { height: 100%; width: 40%; background: var(--accent); }
 
       /* Popup */
       .popup {
         width: 320px; background: var(--bg); padding: 0.9rem 1rem 1.1rem;
-        border-radius: 8px; border: 1px solid var(--border);
+        border-radius: 10px; border: 1px solid var(--border);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+      }
+      .popup .brand-mark {
+        margin: 0; font-size: 0.65rem; letter-spacing: 0.14em; text-transform: uppercase;
+        color: var(--muted); font-weight: 600;
       }
       .popup header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.75rem; }
-      .popup h1 { margin: 0; font-size: 1.05rem; }
+      .popup h1 { margin: 0; font-size: 1.05rem; font-family: var(--font-display); }
       .popup h2 {
         margin: 0 0 0.45rem; font-size: 0.78rem; text-transform: uppercase;
         letter-spacing: 0.04em; color: var(--muted);
@@ -179,17 +215,13 @@
         background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
         padding: 0.75rem; margin-bottom: 0.65rem;
       }
-      .popup a { color: var(--accent); font-size: 0.85rem; }
+      .popup a { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
       .job-section { border-color: color-mix(in oklch, var(--accent) 45%, var(--border)); }
       .job-bar {
         height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden;
         margin: 0.5rem 0 0.65rem; border: 1px solid var(--border);
       }
-      .job-fill { height: 100%; width: 14%; background: var(--accent); }
-      .popup h1 { font-family: var(--font-display); font-style: normal; }
-      .checklist { border-color: var(--warn); background: #2a2414; }
-      .checklist ul { margin: 0 0 0.5rem; padding-left: 1.1rem; font-size: 0.85rem; }
-      .checklist li.missing { color: var(--warn); }
+      .job-fill { height: 100%; width: 40%; background: var(--accent); }
       .hint { margin: 0; font-size: 0.78rem; color: var(--muted); }
       .status { margin: 0 0 0.55rem; display: grid; gap: 0.35rem; }
       .status div { display: flex; justify-content: space-between; font-size: 0.88rem; }
@@ -198,38 +230,126 @@
       .row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; }
       .muted { color: var(--muted); font-size: 0.8rem; }
       code { font-size: 0.78rem; }
+
+      /* Options mock */
+      .options-wrap {
+        max-width: 680px; margin: 0 auto; background: var(--bg);
+        border-radius: 12px; border: 1px solid var(--border); padding: 1.75rem 1.5rem 2rem;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+      }
+      .options-wrap .brand-mark {
+        margin: 0 0 0.35rem; font-size: 0.68rem; letter-spacing: 0.14em;
+        text-transform: uppercase; color: var(--muted); font-weight: 600;
+      }
+      .options-wrap h1 {
+        margin: 0 0 0.25rem; font-family: var(--font-display); font-size: 1.65rem;
+        letter-spacing: -0.02em;
+      }
+      .options-wrap .sub { color: var(--muted); margin: 0 0 1.25rem; font-size: 0.92rem; }
+      .opt-section {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+        padding: 1.1rem 1.15rem; margin-bottom: 0.85rem;
+      }
+      .opt-section h2 {
+        margin: 0 0 0.75rem; font-size: 0.95rem; font-weight: 600;
+      }
+      .opt-section label {
+        display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.65rem;
+      }
+      .opt-section input, .opt-section select, .opt-section textarea {
+        display: block; width: 100%; margin-top: 0.3rem; background: var(--bg);
+        border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+        padding: 0.45rem 0.55rem; font: inherit;
+      }
+      .opt-presets { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.65rem; }
+      .opt-presets span {
+        font-size: 0.75rem; padding: 0.3rem 0.55rem; border-radius: 6px;
+        border: 1px solid var(--border); background: var(--bg);
+      }
+      .opt-presets span.on {
+        border-color: var(--accent);
+        background: color-mix(in oklch, var(--accent) 22%, var(--bg));
+      }
+      .opt-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.5rem; }
+      .opt-hint { font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0 0; }
     </style>
   </head>
   <body>
-    <h1 class="dev-title">VeilTranslate mock harness — fake data, no network</h1>
+    <h1 class="dev-title">VeilTranslate mock harness — demo data only, no network</h1>
 
-    <!-- JOB MODAL (progress) -->
-    <div class="shot" id="shot-modal">
-      <div class="shot-label">modal.png</div>
+    <!-- LANGUAGE PICKER -->
+    <div class="shot" id="shot-modal-languages">
+      <div class="shot-label">modal-languages.png</div>
+      <div class="vt-frame">
+        <div class="vt-panel picker" role="dialog" aria-modal="true">
+          <div class="vt-panel-head">
+            <h2>Auto Titles &amp; Description</h2>
+            <button type="button" class="vt-icon-btn" aria-label="Close">×</button>
+          </div>
+          <div class="vt-meta">Dance of the Stone Circle | Dark Fantasy Music for Focus &amp; Sleep · default: en</div>
+          <div class="vt-banner-dry">Dry-run ON — preview only; Publish stays disabled until you turn this off.</div>
+          <div class="vt-chips">
+            <span class="vt-chip active">Top 10</span>
+            <span class="vt-chip">Top 20</span>
+            <span class="vt-chip">Top 10 RPM (estimate)</span>
+            <span class="vt-chip">Top 20 RPM (estimate)</span>
+            <span class="vt-chip">All</span>
+            <span class="vt-chip">Last used</span>
+          </div>
+          <input class="vt-search" placeholder="Search languages…" readonly value="" />
+          <div class="vt-lang-grid">
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Spanish (es) <span class="vt-badge">exists</span></label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Portuguese (pt)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Hindi (hi)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Indonesian (id)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Russian (ru)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Japanese (ja)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Korean (ko)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> German (de)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> French (fr)</label>
+            <label class="vt-lang-item"><input type="checkbox" checked disabled /> Arabic (ar)</label>
+          </div>
+          <div class="vt-picker-footer">
+            <span class="vt-count">10 selected · 1 already localized</span>
+            <label class="row"><input type="checkbox" checked disabled /> Skip existing</label>
+          </div>
+          <div class="vt-footer">
+            <button type="button">Cancel</button>
+            <button type="button" class="primary">Translate 10 languages</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSLATING -->
+    <div class="shot" id="shot-translating">
+      <div class="shot-label">translating.png</div>
       <div class="vt-frame">
         <div class="vt-panel" role="dialog" aria-modal="true">
           <div class="vt-panel-head">
             <h2>Translating…</h2>
             <div>
-              <button type="button" class="vt-icon-btn" aria-label="Minimize">×</button>
+              <button type="button" class="vt-icon-btn" aria-label="Minimize">−</button>
             </div>
           </div>
+          <div class="vt-meta">Dance of the Stone Circle | Dark Fantasy Music for Focus &amp; Sleep</div>
           <div class="vt-progress-head">
             <div class="vt-progress-meta">
-              <span>14%</span>
-              <span>8/57</span>
-              <span>~4m left</span>
-              <span class="vt-muted">gemini · gemini-2.5-flash</span>
+              <span>40%</span>
+              <span>4/10</span>
+              <span>~1m left</span>
+              <span class="vt-muted">deepl · fallback gemini</span>
             </div>
-            <div class="vt-progress-track" role="progressbar" aria-valuenow="14">
+            <div class="vt-progress-track" role="progressbar" aria-valuenow="40">
               <div class="vt-progress-fill"></div>
             </div>
           </div>
           <div class="vt-progress-list">
-            <div class="vt-lang-row"><span>es</span><span class="vt-muted">gemini · gemini-2.5-flash</span><span class="vt-ok">ok</span></div>
-            <div class="vt-lang-row"><span>pt</span><span class="vt-muted">gemini · gemini-2.5-flash</span><span class="vt-ok">ok</span></div>
+            <div class="vt-lang-row"><span>es</span><span class="vt-muted">deepl</span><span class="vt-ok">ok</span></div>
+            <div class="vt-lang-row"><span>pt</span><span class="vt-muted">deepl</span><span class="vt-ok">ok</span></div>
             <div class="vt-lang-row"><span>hi</span><span class="vt-muted">gemini · gemini-2.5-flash</span><span class="vt-ok">ok</span></div>
-            <div class="vt-lang-row"><span>de</span><span class="vt-muted">gemini · gemini-2.5-flash</span><span>…</span></div>
+            <div class="vt-lang-row"><span>id</span><span class="vt-muted">deepl</span><span class="vt-ok">ok</span></div>
+            <div class="vt-lang-row"><span>de</span><span class="vt-muted">deepl</span><span class="vt-run">…</span></div>
             <div class="vt-lang-row"><span>fr</span><span class="vt-muted"></span><span class="vt-muted">pending</span></div>
             <div class="vt-lang-row"><span>ja</span><span class="vt-muted"></span><span class="vt-muted">pending</span></div>
             <div class="vt-lang-row"><span>ko</span><span class="vt-muted"></span><span class="vt-muted">pending</span></div>
@@ -242,15 +362,66 @@
       </div>
     </div>
 
-    <!-- MINIMIZED WIDGET -->
+    <!-- PREVIEW -->
+    <div class="shot" id="shot-preview">
+      <div class="shot-label">preview.png</div>
+      <div class="vt-frame">
+        <div class="vt-panel preview" role="dialog" aria-modal="true">
+          <div class="vt-panel-head">
+            <h2>Preview localizations</h2>
+            <button type="button" class="vt-icon-btn">×</button>
+          </div>
+          <div class="vt-meta">Dance of the Stone Circle | Dark Fantasy Music for Focus &amp; Sleep · 10 languages ready</div>
+          <div class="vt-banner-dry">Dry-run ON — nothing will be written to YouTube until you turn this off and click Publish.</div>
+          <div class="vt-table-wrap">
+            <table class="vt-preview">
+              <thead>
+                <tr><th>Lang</th><th>Title</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="lang">es</td>
+                  <td><input value="Danza del Círculo de Piedra | Música fantasy oscura para concentrarse y dormir" readonly /></td>
+                  <td><textarea rows="2" readonly>Sumérgete en ritmos ancestrales y texturas de piedra. Ideal para estudio, meditación y sueño profundo.</textarea></td>
+                </tr>
+                <tr>
+                  <td class="lang">de</td>
+                  <td><input value="Tanz des Steinkreises | Dunkle Fantasy-Musik für Fokus &amp; Schlaf" readonly /></td>
+                  <td><textarea rows="2" readonly>Tauche ein in uralte Rhythmen und steinerne Texturen — perfekt zum Lernen, Meditieren und Einschlafen.</textarea></td>
+                </tr>
+                <tr>
+                  <td class="lang">ja</td>
+                  <td><input value="ストーンサークルの舞｜集中と睡眠のためのダークファンタジー音楽" readonly /></td>
+                  <td><textarea rows="2" readonly>古代のリズムと石の質感へ。勉強・瞑想・深い眠りに。</textarea></td>
+                </tr>
+                <tr>
+                  <td class="lang">fr</td>
+                  <td><input value="Danse du cercle de pierre | Musique fantasy sombre pour se concentrer et dormir" readonly /></td>
+                  <td><textarea rows="2" readonly>Plongez dans des rythmes ancestraux et des textures de pierre. Idéal pour étudier, méditer et dormir.</textarea></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="vt-footer">
+            <button type="button">Back</button>
+            <button type="button" class="primary" disabled>Publish (dry-run)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WIDGET -->
     <div class="shot" id="shot-widget">
       <div class="shot-label">widget.png</div>
       <div class="studio-bg">
-        <div style="color:#666;font-size:0.85rem;">studio.youtube.com · video editor</div>
+        <div class="studio-chrome">studio.youtube.com · Video details · demo channel</div>
+        <div style="color:#888;font-size:1.05rem;max-width:28rem;line-height:1.35;">
+          Dance of the Stone Circle | Dark Fantasy Music for Focus &amp; Sleep
+        </div>
         <div id="vt-job-widget" role="status">
           <div class="vt-widget-main">
             <span class="vt-spin" aria-hidden="true"></span>
-            <span>Translating 8/57</span>
+            <span>Translating 4/10</span>
           </div>
           <div class="vt-widget-bar"><div class="vt-widget-fill"></div></div>
         </div>
@@ -262,65 +433,99 @@
       <div class="shot-label">popup.png</div>
       <div class="popup">
         <header>
-          <h1>VeilTranslate</h1>
+          <div>
+            <p class="brand-mark">Open source</p>
+            <h1>VeilTranslate</h1>
+          </div>
           <a href="#">Options</a>
         </header>
         <section class="job-section">
           <h2>Current job</h2>
-          <div><span class="muted">Video</span> <code>dQw4w9WgXcQ</code></div>
-          <div>Translating 8/57 · 14%</div>
+          <div><span class="muted">Video</span> <code>demoVideo01</code></div>
+          <div>Translating 4/10 · 40%</div>
           <div class="job-bar"><div class="job-fill"></div></div>
           <button type="button" class="primary" style="width:100%">Open in Studio</button>
         </section>
         <section>
           <h2>Channels</h2>
-          <p class="hint">Veil of Veles · connected</p>
+          <p class="hint">Demo Ambient Channel · connected</p>
           <button type="button" class="primary">Add channel</button>
         </section>
         <section>
           <h2>Status</h2>
           <dl class="status">
-            <div><dt>Engine</dt><dd>gemini · key set</dd></div>
-            <div><dt>Languages</dt><dd>57 selected</dd></div>
+            <div><dt>Engine</dt><dd>deepl · key set</dd></div>
+            <div><dt>Languages</dt><dd>10 selected</dd></div>
           </dl>
           <label class="row"><input type="checkbox" checked disabled /> Dry-run (preview only)</label>
         </section>
       </div>
     </div>
 
-    <!-- PICKER (kept for reference) -->
-    <div class="shot" id="shot-picker">
-      <div class="shot-label">picker (not captured by default)</div>
-      <div class="vt-frame">
-        <div class="vt-panel picker">
-          <div class="vt-panel-head">
-            <h2>Auto Titles &amp; Description</h2>
-            <button type="button" class="vt-icon-btn">×</button>
+    <!-- OPTIONS -->
+    <div class="shot" id="shot-options">
+      <div class="shot-label">options.png</div>
+      <div class="options-wrap">
+        <p class="brand-mark">Open source</p>
+        <h1>VeilTranslate</h1>
+        <p class="sub">Configure languages, engines, and publishing defaults.</p>
+
+        <div class="opt-section">
+          <h2>OAuth</h2>
+          <label>
+            Google OAuth Client ID
+            <input type="text" readonly value="xxxxxxxxxxxx.apps.googleusercontent.com" />
+          </label>
+          <p class="opt-hint">Web application client. Redirect: https://&lt;extension-id&gt;.chromiumapp.org/</p>
+        </div>
+
+        <div class="opt-section">
+          <h2>Translation engine</h2>
+          <label>
+            Engine
+            <select disabled><option>DeepL Free</option></select>
+          </label>
+          <label>
+            DeepL Free API key
+            <input type="password" readonly value="••••••••••••:fx" />
+          </label>
+          <label>
+            Gemini API key (fallback)
+            <input type="password" readonly value="••••••••••••••••" />
+          </label>
+          <p class="opt-hint">Auto-fallback on quota: ON · Gemini throttle: 4000 ms</p>
+        </div>
+
+        <div class="opt-section">
+          <h2>Per-channel settings</h2>
+          <label>
+            Channel
+            <select disabled><option>Demo Ambient Channel</option></select>
+          </label>
+          <div class="opt-presets">
+            <span class="on">Top 10</span>
+            <span>Top 20</span>
+            <span>Top 10 RPM</span>
+            <span>Top 20 RPM</span>
           </div>
-          <div class="vt-meta">Ancient Slavic Myths Explained · default: en</div>
-          <div class="vt-banner-dry">Dry-run ON — preview only; Publish will stay disabled until you turn this off.</div>
-          <div class="vt-chips">
-            <span class="vt-chip">Top 10</span>
-            <span class="vt-chip">Top 20</span>
-            <span class="vt-chip">Top 10 RPM (estimate)</span>
-            <span class="vt-chip">Top 20 RPM (estimate)</span>
-            <span class="vt-chip">All</span>
-            <span class="vt-chip">Last used</span>
-          </div>
-          <input class="vt-search" placeholder="Search languages…" readonly />
-          <div class="vt-lang-grid">
-            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇪🇸 Spanish (es) <span class="vt-badge">exists</span></label>
-            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇧🇷 Portuguese (pt)</label>
-            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇮🇳 Hindi (hi)</label>
-            <label class="vt-lang-item"><input type="checkbox" checked disabled /> 🇩🇪 German (de)</label>
-          </div>
-          <div class="vt-picker-footer">
-            <span class="vt-count">10 selected · 2 already localized</span>
-          </div>
-          <div class="vt-footer">
-            <button type="button">Cancel</button>
-            <button type="button" class="primary">Translate 10 languages</button>
-          </div>
+          <label class="row" style="display:flex;gap:0.4rem;align-items:center;color:var(--text);">
+            <input type="checkbox" disabled /> Auto-publish (OFF by default)
+          </label>
+        </div>
+
+        <div class="opt-section">
+          <h2>Global</h2>
+          <label class="row" style="display:flex;gap:0.4rem;align-items:center;color:var(--text);">
+            <input type="checkbox" checked disabled /> Dry-run (preview only)
+          </label>
+          <label class="row" style="display:flex;gap:0.4rem;align-items:center;color:var(--text);margin-top:0.5rem;">
+            <input type="checkbox" checked disabled /> Skip existing localizations
+          </label>
+        </div>
+
+        <div class="opt-actions">
+          <button type="button" class="primary">Save</button>
+          <span class="opt-hint">Demo values — not real credentials</span>
         </div>
       </div>
     </div>

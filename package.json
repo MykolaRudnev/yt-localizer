@@ -1,9 +1,29 @@
 {
   "name": "veil-translate",
   "version": "1.0.0",
-  "private": true,
-  "description": "VeilTranslate — YouTube Studio title/description localizations",
+  "description": "Chrome MV3 extension + CLI to translate YouTube titles/descriptions and publish official localizations via YouTube Data API v3",
+  "license": "MIT",
+  "author": "Mykola Rudnev",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MykolaRudnevHUBER/veil-translate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MykolaRudnevHUBER/veil-translate/issues"
+  },
+  "homepage": "https://github.com/MykolaRudnevHUBER/veil-translate#readme",
+  "keywords": [
+    "youtube",
+    "youtube-studio",
+    "localization",
+    "translation",
+    "chrome-extension",
+    "mv3",
+    "deepl",
+    "gemini",
+    "libretranslate"
+  ],
   "scripts": {
     "build": "npm run build:extension && npm run build:cli",
     "build:extension": "VT_TARGET=background vite build --config extension/vite.config.ts && VT_TARGET=content vite build --config extension/vite.config.ts && VT_TARGET=options vite build --config extension/vite.config.ts && VT_TARGET=popup vite build --config extension/vite.config.ts",
@@ -11,7 +31,7 @@
     "dev": "npm run build:extension",
     "test": "vitest run",
     "test:watch": "vitest",
-    "screenshots": "node extension/dev/capture-screenshots.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "yt-translate": "node cli/dist/cli/src/index.js"
   },
   "devDependencies": {

@@ -51,27 +51,27 @@ describe('hashtags', () => {
 });
 
 describe('protected terms', () => {
-  it('masks Veil of Veles case-insensitively', () => {
-    const { text, map } = protectTerms('Welcome to veil of veles channel', ['Veil of Veles']);
-    expect(text.toLowerCase()).not.toContain('veil of veles');
-    expect([...map.values()]).toContain('Veil of Veles');
+  it('masks brand names case-insensitively', () => {
+    const { text, map } = protectTerms('Welcome to acme studio channel', ['Acme Studio']);
+    expect(text.toLowerCase()).not.toContain('acme studio');
+    expect([...map.values()]).toContain('Acme Studio');
   });
 
   it('round-trips through prepare/restore', () => {
-    const title = 'Veil of Veles — new video #Myth';
-    const desc = 'Watch on https://example.com/@veil and say hi to Veil of Veles\n#Myth';
+    const title = 'Acme Studio — new video #Myth';
+    const desc = 'Watch on https://example.com/@acme and say hi to Acme Studio\n#Myth';
     const prepared = prepareForTranslation(title, desc, {
-      protectedTerms: ['Veil of Veles'],
+      protectedTerms: ['Acme Studio'],
       hashtagMode: 'keep',
       chapterMode: 'keep',
       titleOver100: 'truncate',
     });
-    expect(prepared.title).not.toMatch(/Veil of Veles/i);
+    expect(prepared.title).not.toMatch(/Acme Studio/i);
     expect(prepared.description).not.toContain('https://');
     const restoredTitle = restoreAfterTranslation(prepared.title, prepared.maps);
     const restoredDesc = restoreAfterTranslation(prepared.description, prepared.maps);
-    expect(restoredTitle).toContain('Veil of Veles');
-    expect(restoredDesc).toContain('https://example.com/@veil');
+    expect(restoredTitle).toContain('Acme Studio');
+    expect(restoredDesc).toContain('https://example.com/@acme');
     expect(restoredDesc).toContain('#Myth');
   });
 });

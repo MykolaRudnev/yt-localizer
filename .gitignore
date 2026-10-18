@@ -13,3 +13,11 @@ tokens.json
 *.log
 coverage/
 .vite/
+.idea/
+
+# Internal prompts / agent chains (keep local, never publish)
+*-PROMPT.md
+*-prompt.md
+SPEC.md
+chain*.sh
+.hallmark/
