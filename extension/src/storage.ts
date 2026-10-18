@@ -13,6 +13,9 @@ const CHANNELS_KEY = 'channels';
 const ACTIVE_CHANNEL_KEY = 'activeChannelId';
 const CHANNEL_SETTINGS_KEY = 'channelSettings';
 const GEMINI_AUTO_MODEL_KEY = 'geminiAutoModel';
+const GEMINI_MODEL_CAPS_KEY = 'geminiModelCaps';
+
+type GeminiModelCaps = Record<string, { jsonMode?: boolean }>;
 
 /** Legacy single-account keys — cleared on multi-channel write. */
 const LEGACY_TOKEN_KEY = 'accessToken';
@@ -155,4 +158,25 @@ export async function getGeminiAutoModel(): Promise<string | undefined> {
 
 export async function setGeminiAutoModel(model: string): Promise<void> {
   await chrome.storage.local.set({ [GEMINI_AUTO_MODEL_KEY]: model });
+}
+
+async function getGeminiModelCaps(): Promise<GeminiModelCaps> {
+  const data = await chrome.storage.local.get(GEMINI_MODEL_CAPS_KEY);
+  return (data[GEMINI_MODEL_CAPS_KEY] as GeminiModelCaps | undefined) ?? {};
+}
+
+/** Map of model id → jsonMode (false = skip responseMimeType). */
+export async function getGeminiJsonModeByModel(): Promise<Record<string, boolean>> {
+  const caps = await getGeminiModelCaps();
+  const out: Record<string, boolean> = {};
+  for (const [id, c] of Object.entries(caps)) {
+    if (typeof c?.jsonMode === 'boolean') out[id] = c.jsonMode;
+  }
+  return out;
+}
+
+export async function setGeminiModelJsonMode(model: string, jsonMode: boolean): Promise<void> {
+  const caps = await getGeminiModelCaps();
+  caps[model] = { ...caps[model], jsonMode };
+  await chrome.storage.local.set({ [GEMINI_MODEL_CAPS_KEY]: caps });
 }

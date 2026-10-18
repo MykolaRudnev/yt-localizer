@@ -38,10 +38,16 @@ export interface EngineConfig {
   geminiModel?: string;
   /** Cached auto-picked model from a previous list+pick. */
   geminiAutoModel?: string;
+  /**
+   * Per-model JSON-mode capability (false = skip responseMimeType).
+   * Missing key = unknown (try JSON mode first).
+   */
+  geminiJsonModeByModel?: Record<string, boolean>;
   deeplApiKey?: string;
   libreTranslateUrl?: string;
   libreTranslateApiKey?: string;
   onGeminiModelResolved?: (model: string) => void | Promise<void>;
+  onGeminiJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
 }
 
 /** Per-channel prefs (languages / terms / source lang). Engine keys stay global. */

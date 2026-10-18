@@ -1,6 +1,7 @@
 import type { TranslateOptions, TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
-import { isModelNotFoundError } from '../errors.js';
+import { isJsonModeUnsupportedError, isModelNotFoundError } from '../errors.js';
+export { isJsonModeUnsupportedError } from '../errors.js';
 import {
   applyTitleLimit,
   prepareForTranslation,
@@ -12,9 +13,22 @@ export const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
 
 const MODELS_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+const EXCLUDE_RE =
+  /image|tts|audio|live|embedding|aqa|vision|thinking-exp|robotics|computer-use|nano|learnlm|gemma/i;
+
+/** Plain text chat: gemini-*-flash or gemini-*-pro (not specialty variants). */
+const CHAT_RE = /^gemini-[\w.-]*-(flash|pro)(?:-|$)/i;
+
 export type GeminiModelHooks = {
   /** Called when auto-pick (or 404 refresh) chooses a model — cache it. */
   onModelResolved?: (model: string) => void | Promise<void>;
+  /**
+   * Known JSON-mode capability for this model.
+   * undefined = unknown (try responseMimeType); false = skip JSON mode.
+   */
+  jsonMode?: boolean;
+  /** Persist per-model capability after discovery. */
+  onJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
 };
 
 function stripModelsPrefix(name: string): string {
@@ -69,37 +83,57 @@ function cmpVersionDesc(a: string, b: string): number {
   return b.localeCompare(a);
 }
 
-function flashScore(id: string): number {
-  const lower = id.toLowerCase();
-  if (!lower.includes('flash')) return -1;
+/**
+ * Rank eligible chat models. Higher is better. -1 = ineligible.
+ * Prefer flash > pro, stable > preview/exp, non-lite > lite (lite last).
+ */
+export function chatModelRank(id: string): number {
+  const lower = normalizeGeminiModelId(id).toLowerCase();
+  if (!CHAT_RE.test(lower)) return -1;
+  if (EXCLUDE_RE.test(lower)) return -1;
+
+  const isFlash = lower.includes('-flash');
+  const isPro = /(?:^|-)pro(?:-|$)/.test(lower);
+  if (!isFlash && !isPro) return -1;
+
   const lite = lower.includes('lite');
   const preview = lower.includes('preview') || lower.includes('exp');
-  if (!lite && !preview) return 3;
-  if (!lite && preview) return 2;
-  if (lite && !preview) return 1;
-  return 0;
+
+  // Tiers: non-lite first (100+), lite only as last resort (0–19)
+  if (lite) {
+    let score = isFlash ? 10 : 5;
+    if (!preview) score += 4;
+    return score;
+  }
+  let score = isFlash ? 100 : 50;
+  if (!preview) score += 20;
+  return score;
+}
+
+export function isEligibleChatModel(id: string): boolean {
+  return chatModelRank(id) >= 0;
 }
 
 /**
- * Newest available *-flash model; non-lite, non-preview preferred.
+ * Best plain-text chat model (flash/pro); lite only if nothing else.
  * Falls back to GEMINI_FALLBACK_MODEL if nothing matches.
  */
 export function pickBestFlashModel(models: string[]): string {
-  const flash = models
+  const eligible = models
     .map(normalizeGeminiModelId)
-    .filter((id) => flashScore(id) >= 0);
-  if (!flash.length) return GEMINI_FALLBACK_MODEL;
-  flash.sort((a, b) => {
-    const sd = flashScore(b) - flashScore(a);
+    .filter((id) => chatModelRank(id) >= 0);
+  if (!eligible.length) return GEMINI_FALLBACK_MODEL;
+  eligible.sort((a, b) => {
+    const sd = chatModelRank(b) - chatModelRank(a);
     if (sd) return sd;
     return cmpVersionDesc(a, b);
   });
-  return flash[0];
+  return eligible[0];
 }
 
 /**
  * Resolve which model to use.
- * Configured text wins; else cached auto; else list+pick; else alias.
+ * Configured text wins; else cached auto (if still eligible); else list+pick; else alias.
  */
 export async function resolveGeminiModel(
   apiKey: string,
@@ -112,7 +146,10 @@ export async function resolveGeminiModel(
     return { model: normalizeGeminiModelId(configuredTrim), autoPicked: false };
   }
   if (cachedAuto?.trim()) {
-    return { model: normalizeGeminiModelId(cachedAuto), autoPicked: true };
+    const id = normalizeGeminiModelId(cachedAuto);
+    if (isEligibleChatModel(id)) {
+      return { model: id, autoPicked: true };
+    }
   }
   try {
     const list = await listGeminiModels(apiKey, signal);
@@ -123,21 +160,57 @@ export async function resolveGeminiModel(
   }
 }
 
-async function generateContent(
+/**
+ * Parse model text as JSON: strip ```json fences, else first {...} block.
+ */
+export function extractJsonObject(text: string): unknown {
+  let body = text.trim();
+  const fenced = body.match(/^```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) body = fenced[1].trim();
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    const start = body.indexOf('{');
+    const end = body.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(body.slice(start, end + 1));
+    }
+    throw new Error('Gemini returned non-JSON text');
+  }
+}
+
+type GenOpts = {
+  signal?: AbortSignal;
+  useJsonMode: boolean;
+  maxOutputTokens?: number;
+  temperature?: number;
+};
+
+async function generateContentOnce(
   apiKey: string,
   model: string,
   prompt: string,
-  signal?: AbortSignal,
+  opts: GenOpts,
 ): Promise<string> {
   const id = normalizeGeminiModelId(model);
   const url = `${MODELS_URL}/${encodeURIComponent(id)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const generationConfig: Record<string, unknown> = {
+    temperature: opts.temperature ?? 0.3,
+  };
+  if (opts.maxOutputTokens !== undefined) {
+    generationConfig.maxOutputTokens = opts.maxOutputTokens;
+  }
+  if (opts.useJsonMode) {
+    generationConfig.responseMimeType = 'application/json';
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    signal,
+    signal: opts.signal,
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+      generationConfig,
     }),
   });
   if (!res.ok) {
@@ -150,26 +223,63 @@ async function generateContent(
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
-/** Cheap key+model check before starting a job. */
+/**
+ * Call generateContent; on JSON-mode 400, retry without MIME type and remember.
+ */
+export async function generateContent(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  opts: {
+    signal?: AbortSignal;
+    jsonMode?: boolean;
+    onJsonModeResolved?: (jsonMode: boolean) => void | Promise<void>;
+    maxOutputTokens?: number;
+    temperature?: number;
+  } = {},
+): Promise<string> {
+  const tryJson = opts.jsonMode !== false;
+  try {
+    return await generateContentOnce(apiKey, model, prompt, {
+      signal: opts.signal,
+      useJsonMode: tryJson,
+      maxOutputTokens: opts.maxOutputTokens,
+      temperature: opts.temperature,
+    });
+  } catch (err) {
+    if (!tryJson || !isJsonModeUnsupportedError(err)) throw err;
+    await opts.onJsonModeResolved?.(false);
+    const plainPrompt = `${prompt}\n\nOutput raw JSON only. No markdown fences.`;
+    return await generateContentOnce(apiKey, model, plainPrompt, {
+      signal: opts.signal,
+      useJsonMode: false,
+      maxOutputTokens: opts.maxOutputTokens,
+      temperature: opts.temperature,
+    });
+  }
+}
+
+/** Same request shape as real translate calls (JSON mode + tiny JSON reply). */
 export async function preflightGemini(
   apiKey: string,
   model: string,
   signal?: AbortSignal,
+  caps?: {
+    jsonMode?: boolean;
+    onJsonModeResolved?: (jsonMode: boolean) => void | Promise<void>;
+  },
 ): Promise<void> {
-  const id = normalizeGeminiModelId(model);
-  const url = `${MODELS_URL}/${encodeURIComponent(id)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const prompt = 'Reply with exactly: {"ok":true}';
+  const raw = await generateContent(apiKey, model, prompt, {
     signal,
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: 'Reply with exactly: {"ok":true}' }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 16 },
-    }),
+    jsonMode: caps?.jsonMode,
+    onJsonModeResolved: caps?.onJsonModeResolved,
+    temperature: 0,
+    maxOutputTokens: 32,
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gemini ${res.status}: ${body.slice(0, 200)}`);
+  const parsed = extractJsonObject(raw);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Gemini preflight returned unexpected payload');
   }
 }
 
@@ -206,6 +316,7 @@ export function createGeminiEngine(
 ): TranslationEngine {
   let currentModel = normalizeGeminiModelId(model);
   let refreshedOnce = false;
+  let jsonMode = hooks.jsonMode;
 
   return {
     id: 'gemini',
@@ -216,9 +327,18 @@ export function createGeminiEngine(
       const prompt = buildPrompt(prepared.title, prepared.description, target, source, options);
       const signal = options.signal;
 
+      const rememberJsonMode = async (enabled: boolean) => {
+        jsonMode = enabled;
+        await hooks.onJsonModeResolved?.(currentModel, enabled);
+      };
+
       const runOnce = async (useModel: string) => {
-        const raw = await generateContent(apiKey, useModel, prompt, signal);
-        const parsed = JSON.parse(raw) as { title?: string; description?: string };
+        const raw = await generateContent(apiKey, useModel, prompt, {
+          signal,
+          jsonMode,
+          onJsonModeResolved: rememberJsonMode,
+        });
+        const parsed = extractJsonObject(raw) as { title?: string; description?: string };
         if (typeof parsed.title !== 'string' || typeof parsed.description !== 'string') {
           throw new Error('Gemini returned invalid JSON shape');
         }
@@ -235,6 +355,7 @@ export function createGeminiEngine(
               const list = await listGeminiModels(apiKey, signal);
               const picked = pickBestFlashModel(list);
               currentModel = picked;
+              jsonMode = undefined;
               await hooks.onModelResolved?.(picked);
               return await runOnce(currentModel);
             }

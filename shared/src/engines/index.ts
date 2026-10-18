@@ -7,6 +7,11 @@ import {
   listGeminiModels,
   pickBestFlashModel,
   normalizeGeminiModelId,
+  extractJsonObject,
+  chatModelRank,
+  isEligibleChatModel,
+  isJsonModeUnsupportedError,
+  generateContent,
 } from './gemini.js';
 import { createDeeplEngine, deeplSupports } from './deepl.js';
 import { createLibreTranslateEngine } from './libre.js';
@@ -21,8 +26,24 @@ export {
   listGeminiModels,
   pickBestFlashModel,
   normalizeGeminiModelId,
+  extractJsonObject,
+  chatModelRank,
+  isEligibleChatModel,
+  isJsonModeUnsupportedError,
+  generateContent,
   GEMINI_FALLBACK_MODEL,
 };
+
+function rememberJsonMode(config: EngineConfig, model: string, jsonMode: boolean) {
+  const id = normalizeGeminiModelId(model);
+  if (!config.geminiJsonModeByModel) config.geminiJsonModeByModel = {};
+  config.geminiJsonModeByModel[id] = jsonMode;
+  return config.onGeminiJsonModeResolved?.(id, jsonMode);
+}
+
+function knownJsonMode(config: EngineConfig, model: string): boolean | undefined {
+  return config.geminiJsonModeByModel?.[normalizeGeminiModelId(model)];
+}
 
 export async function createEngine(config: EngineConfig): Promise<TranslationEngine> {
   switch (config.engine) {
@@ -36,6 +57,8 @@ export async function createEngine(config: EngineConfig): Promise<TranslationEng
       if (autoPicked) await config.onGeminiModelResolved?.(model);
       return createGeminiEngine(config.geminiApiKey, model, {
         onModelResolved: config.onGeminiModelResolved,
+        jsonMode: knownJsonMode(config, model),
+        onJsonModeResolved: (m, enabled) => rememberJsonMode(config, m, enabled),
       });
     }
     case 'deepl':
@@ -49,11 +72,11 @@ export async function createEngine(config: EngineConfig): Promise<TranslationEng
   }
 }
 
-/** Cheap validation before starting a multi-language job. */
+/** Cheap validation before starting a multi-language job. Returns resolved Gemini model when applicable. */
 export async function preflightEngine(
   config: EngineConfig,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<{ model?: string }> {
   switch (config.engine) {
     case 'gemini': {
       if (!config.geminiApiKey) throw new Error('Gemini API key is required');
@@ -64,8 +87,11 @@ export async function preflightEngine(
         signal,
       );
       if (autoPicked) await config.onGeminiModelResolved?.(model);
-      await preflightGemini(config.geminiApiKey, model, signal);
-      return;
+      await preflightGemini(config.geminiApiKey, model, signal, {
+        jsonMode: knownJsonMode(config, model),
+        onJsonModeResolved: (enabled) => rememberJsonMode(config, model, enabled),
+      });
+      return { model };
     }
     case 'deepl': {
       if (!config.deeplApiKey) throw new Error('DeepL API key is required');
@@ -88,7 +114,7 @@ export async function preflightEngine(
         const err = await res.text();
         throw new Error(`DeepL ${res.status}: ${err.slice(0, 200)}`);
       }
-      return;
+      return {};
     }
     case 'libretranslate': {
       if (!config.libreTranslateUrl) throw new Error('LibreTranslate URL is required');
@@ -97,7 +123,7 @@ export async function preflightEngine(
       if (!res.ok) {
         throw new Error(`LibreTranslate ${res.status}: preflight failed`);
       }
-      return;
+      return {};
     }
     default:
       throw new Error(`Unknown engine: ${config.engine satisfies never}`);
@@ -126,8 +152,11 @@ export async function translateTitleDescription(
       options.signal,
     );
     if (autoPicked) await config.onGeminiModelResolved?.(model);
-    engine = createGeminiEngine(geminiFallbackKey, model || GEMINI_FALLBACK_MODEL, {
+    const useModel = model || GEMINI_FALLBACK_MODEL;
+    engine = createGeminiEngine(geminiFallbackKey, useModel, {
       onModelResolved: config.onGeminiModelResolved,
+      jsonMode: knownJsonMode(config, useModel),
+      onJsonModeResolved: (m, enabled) => rememberJsonMode(config, m, enabled),
     });
   }
   const [t, d] = await engine.translate([title, description], target, source, options);

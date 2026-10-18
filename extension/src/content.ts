@@ -428,6 +428,9 @@ async function runTranslateFlow(
     }
   };
 
+  let activeModel = '';
+  const modelSuffix = () => (activeModel ? ` · ${activeModel}` : '');
+
   const onMsg = (msg: {
     type?: string;
     language?: string;
@@ -441,8 +444,10 @@ async function runTranslateFlow(
     stopReason?: string;
     fatalSummary?: string;
     fatalHint?: string;
+    model?: string;
   }) => {
     if (msg.type === 'VT_PROGRESS') {
+      if (msg.model) activeModel = msg.model;
       if (msg.languages?.length) {
         // ensure rows exist if background sends full list
         const list = progressRoot.querySelector('#vt-progress-list');
@@ -457,13 +462,15 @@ async function runTranslateFlow(
         if (msg.fatalSummary) {
           el.innerHTML = `<strong class="vt-err">${escapeHtml(msg.fatalSummary)}</strong>${
             msg.fatalHint ? `<div class="vt-hint">${escapeHtml(msg.fatalHint)}</div>` : ''
-          }`;
+          }${activeModel ? `<div class="vt-hint">Model: ${escapeHtml(activeModel)}</div>` : ''}`;
+        } else if (msg.model && !msg.language) {
+          el.textContent = `Using ${msg.model}…`;
         } else if (msg.status === 'running') {
-          el.textContent = `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})…`;
+          el.textContent = `Translating ${msg.language || '…'} (${(msg.index ?? 0) + 1}/${msg.total ?? '?'})${modelSuffix()}…`;
         } else if (msg.status === 'ok') {
-          el.textContent = `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})`;
+          el.textContent = `Done ${msg.language} (${(msg.index ?? 0) + 1}/${msg.total})${modelSuffix()}`;
         } else if (msg.status === 'failed' && msg.language) {
-          el.textContent = `Failed ${msg.language}`;
+          el.textContent = `Failed ${msg.language}${modelSuffix()}`;
         }
       }
       if (msg.language && msg.status === 'running') setRow(msg.language, 'running');
