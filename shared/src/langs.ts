@@ -12,6 +12,35 @@ export const TOP10_CODES = [
   'ar',
 ] as const;
 
+/** Top 10 RPM markets estimate (matches languages.json presets.top10rpm). */
+export const TOP10_RPM_CODES = [
+  'en',
+  'de',
+  'ja',
+  'ko',
+  'fr',
+  'nl',
+  'sv',
+  'no',
+  'da',
+  'it',
+] as const;
+
+/** Top 20 RPM markets estimate (matches languages.json presets.top20rpm). */
+export const TOP20_RPM_CODES = [
+  ...TOP10_RPM_CODES,
+  'fi',
+  'is',
+  'he',
+  'zh-Hant',
+  'zh-Hans',
+  'pl',
+  'cs',
+  'hu',
+  'el',
+  'pt',
+] as const;
+
 /** Rough flag emoji for language codes (display only). */
 const FLAG_BY_LANG: Record<string, string> = {
   af: '🇿🇦',
