@@ -12,6 +12,7 @@ import {
   reduceJob,
   shouldEndSessionOnClose,
   shouldReopenExistingJob,
+  shouldShowJobWidget,
   type TranslateJob,
 } from './job.js';
 
@@ -177,6 +178,20 @@ describe('session close lifecycle', () => {
     const running = createJob();
     expect(needsDiscardPreviewConfirm(running)).toBe(false);
   });
+
+  it('shows status widget only while job is running (not finished / cleared)', () => {
+    const running = createJob();
+    expect(shouldShowJobWidget(running)).toBe(true);
+    expect(shouldShowJobWidget(null)).toBe(false);
+
+    for (const phase of ['done', 'failed', 'stopped'] as const) {
+      expect(shouldShowJobWidget({ ...running, phase })).toBe(false);
+    }
+
+    // Session end (CLEAR_JOB → null): widget must stay gone across reload/SPA
+    expect(shouldShowJobWidget(null)).toBe(false);
+    expect(badgeForJob(null).text).toBe('');
+  });
 });
 
 describe('jobEta / badgeForJob', () => {
@@ -193,7 +208,7 @@ describe('jobEta / badgeForJob', () => {
     expect(jobEta(job, 2_000)).toBe('~3s left');
   });
 
-  it('badge colors: blue running, green done, red failed', () => {
+  it('badge colors: blue running/done, red failed; cleared when no job', () => {
     const running = createJob();
     expect(badgeForJob(running).color).toBe('#3b82f6');
     expect(badgeForJob(running).text).toBe('0/3');
@@ -207,7 +222,7 @@ describe('jobEta / badgeForJob', () => {
         { language: 'ja', title: 'c', description: '' },
       ],
     })!;
-    expect(badgeForJob(done).color).toBe('#22c55e');
+    expect(badgeForJob(done).color).toBe('#3b82f6');
 
     const failed = reduceJob(running, {
       type: 'finish',

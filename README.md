@@ -49,7 +49,7 @@ Keyboard: **Enter** confirms the primary action. While a job is **running**, **E
 | Minimized status widget | ![widget](docs/screenshots/widget.png) |
 | Toolbar popup with job | ![popup](docs/screenshots/popup.png) |
 
-UI uses the Hallmark **Veil** theme (dark moss, Studio-native Roboto + restrained serif wordmark). PNGs above may lag the live CSS until regenerated.
+UI uses the Hallmark **Veil** theme (cool blue-grey dark, clear blue accent, Studio-native Roboto + restrained serif wordmark). PNGs above may lag the live CSS until regenerated.
 
 Regenerate (dev only, no network):
 

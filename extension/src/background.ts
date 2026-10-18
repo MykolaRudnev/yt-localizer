@@ -471,7 +471,7 @@ async function startTranslate(
   if (runningPromise && memoryJob?.phase === 'running') {
     return {
       ok: false,
-      error: 'A translation job is already running. Stop it or wait, or use New translation.',
+      error: 'A translation job is already running. Stop it or wait, or use New session.',
       job: memoryJob,
     };
   }

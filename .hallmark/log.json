@@ -3,6 +3,16 @@
     "date": "2026-10-18",
     "macrostructure": "Workbench",
     "theme": "custom",
+    "theme_axes": "dark / roman-serif / cool",
+    "vibe": "dark mystical restrained cool blue",
+    "enrichment": "none",
+    "scope": "app",
+    "brief": "VeilTranslate blue accent amendment + footer New session + clear widget on session end"
+  },
+  {
+    "date": "2026-10-18",
+    "macrostructure": "Workbench",
+    "theme": "custom",
     "theme_axes": "dark / roman-serif / chromatic-other",
     "vibe": "dark mystical restrained moss",
     "enrichment": "none",

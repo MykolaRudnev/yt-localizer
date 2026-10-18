@@ -207,6 +207,14 @@ export function shouldEndSessionOnClose(job: TranslateJob | null | undefined): b
   return isJobFinished(job);
 }
 
+/**
+ * Floating status widget + keep-alive chrome only while a job is still running
+ * (minimized unfinished). Finished jobs must not show the pill after session end.
+ */
+export function shouldShowJobWidget(job: TranslateJob | null | undefined): boolean {
+  return !!job && job.phase === 'running';
+}
+
 /** Unpublished OK rows in a finished job — confirm before discarding the preview. */
 export function needsDiscardPreviewConfirm(job: TranslateJob): boolean {
   return isJobFinished(job) && jobUnpublished(job).length > 0;
@@ -287,9 +295,9 @@ export function badgeForJob(job: TranslateJob | null): {
   if (!job) return { text: '', color: '#666666' };
   const text = `${job.doneCount}/${job.totalCount}`;
   if (job.phase === 'running') return { text, color: '#3b82f6' };
-  if (job.phase === 'done' && jobFailed(job).length === 0) return { text, color: '#22c55e' };
+  if (job.phase === 'done' && jobFailed(job).length === 0) return { text, color: '#3b82f6' };
   if (job.phase === 'done' || job.phase === 'failed' || job.phase === 'stopped') {
-    return { text, color: jobFailed(job).length ? '#ef4444' : '#22c55e' };
+    return { text, color: jobFailed(job).length ? '#ef4444' : '#3b82f6' };
   }
   return { text, color: '#666666' };
 }
