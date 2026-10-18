@@ -71,16 +71,16 @@ describe('isAccessTokenFresh', () => {
 
 describe('seedChannelSettings / mergeSettingsForChannel', () => {
   it('adds the channel name to protected terms by default', () => {
-    const s = seedChannelSettings('Veil of Veles PL');
-    expect(s.protectedTerms[0]).toBe('Veil of Veles PL');
-    expect(s.protectedTerms).toContain('Veil of Veles');
+    const s = seedChannelSettings('Demo Channel PL');
+    expect(s.protectedTerms[0]).toBe('Demo Channel PL');
+    expect(s.protectedTerms).toEqual(['Demo Channel PL']);
   });
 
   it('does not duplicate channel name (case-insensitive)', () => {
-    const s = seedChannelSettings('Veil of Veles', {
-      protectedTerms: ['veil of veles', 'foo'],
+    const s = seedChannelSettings('Demo Channel', {
+      protectedTerms: ['demo channel', 'foo'],
     });
-    expect(s.protectedTerms.filter((t) => /veil of veles/i.test(t))).toHaveLength(
+    expect(s.protectedTerms.filter((t) => /demo channel/i.test(t))).toHaveLength(
       1,
     );
   });

@@ -174,7 +174,7 @@ async function main() {
       titleOver100: 'truncate',
       hashtagMode: 'keep',
       chapterMode: 'translate_labels',
-      protectedTerms: ['Veil of Veles'],
+      protectedTerms: [],
       defaultSourceLanguage: video.snippet.defaultLanguage || 'en',
     },
     (p) => console.log(`[${p.index + 1}/${p.total}] ${p.language}: ${p.status}${p.error ? ' ' + p.error : ''}`),

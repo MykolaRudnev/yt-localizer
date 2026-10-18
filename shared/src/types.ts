@@ -131,7 +131,7 @@ const TOP10_DEFAULT = [
 export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
   selectedLanguages: [...TOP10_DEFAULT],
   lastUsedLanguages: [...TOP10_DEFAULT],
-  protectedTerms: ['Veil of Veles'],
+  protectedTerms: [],
   defaultSourceLanguage: 'en',
   autoPublish: false,
 };
@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   titleOver100: 'truncate',
   hashtagMode: 'keep',
   chapterMode: 'translate_labels',
-  protectedTerms: ['Veil of Veles'],
+  protectedTerms: [],
   defaultSourceLanguage: 'en',
   dryRun: true,
   skipExisting: true,
