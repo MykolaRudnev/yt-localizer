@@ -7,12 +7,12 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MykolaRudnevHUBER/yt-localizer.git"
+    "url": "https://github.com/MykolaRudnev/yt-localizer.git"
   },
   "bugs": {
-    "url": "https://github.com/MykolaRudnevHUBER/yt-localizer/issues"
+    "url": "https://github.com/MykolaRudnev/yt-localizer/issues"
   },
-  "homepage": "https://github.com/MykolaRudnevHUBER/yt-localizer#readme",
+  "homepage": "https://github.com/MykolaRudnev/yt-localizer#readme",
   "bin": {
     "yt-localizer": "cli/dist/cli/src/index.js"
   },

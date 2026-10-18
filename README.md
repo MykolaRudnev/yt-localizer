@@ -1,7 +1,7 @@
 # YT Localizer
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![CI](https://github.com/MykolaRudnevHUBER/yt-localizer/actions/workflows/ci.yml/badge.svg)](https://github.com/MykolaRudnevHUBER/yt-localizer/actions/workflows/ci.yml)
+[![CI](https://github.com/MykolaRudnev/yt-localizer/actions/workflows/ci.yml/badge.svg)](https://github.com/MykolaRudnev/yt-localizer/actions/workflows/ci.yml)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/mykolarudnev)
 
 **Translate YouTube titles & descriptions into official localizations — free, local, open source.**
@@ -37,7 +37,7 @@ Paid “bulk localization” tools charge monthly for what the YouTube API alrea
 ## Quick start
 
 ```bash
-git clone https://github.com/MykolaRudnevHUBER/yt-localizer.git
+git clone https://github.com/MykolaRudnev/yt-localizer.git
 cd yt-localizer
 npm ci
 npm test
