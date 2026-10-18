@@ -17,32 +17,32 @@ App / tool surfaces only (no marketing pages).
 
 ## Theme
 Custom **Veil** — tuned for the “Veil of Veles” channel voice: dark, mystical,
-restrained. Moss accent (earth/undergrowth), cool-green neutrals. Never purple
+restrained. Clear blue accent (hue ~245), cool blue-grey neutrals. Never purple
 gradients, glassmorphism, or decorative emoji chrome.
 
-- `--color-paper`     oklch(15% 0.014 155)
-- `--color-paper-2`   oklch(19% 0.016 155)
-- `--color-paper-3`   oklch(23% 0.014 155)
-- `--color-ink`       oklch(94% 0.010 150)
-- `--color-ink-2`     oklch(78% 0.018 155)
-- `--color-muted`     oklch(62% 0.022 160)
-- `--color-rule`      oklch(32% 0.018 155)
-- `--color-accent`    oklch(64% 0.100 148)
-- `--color-accent-ink` oklch(98% 0.010 150)
-- `--color-focus`     oklch(72% 0.110 148)
+- `--color-paper`     oklch(15% 0.014 250)
+- `--color-paper-2`   oklch(19% 0.016 250)
+- `--color-paper-3`   oklch(23% 0.014 250)
+- `--color-ink`       oklch(94% 0.010 250)
+- `--color-ink-2`     oklch(78% 0.018 250)
+- `--color-muted`     oklch(62% 0.022 250)
+- `--color-rule`      oklch(32% 0.018 250)
+- `--color-accent`    oklch(68% 0.140 245)
+- `--color-accent-ink` oklch(98% 0.010 250)
+- `--color-focus`     oklch(74% 0.130 245)
 - `--color-warn`      oklch(78% 0.110 85)
 - `--color-danger`    oklch(68% 0.140 25)
-- `--color-ok`        oklch(68% 0.110 148)
-- `--color-info`      oklch(72% 0.060 220)
+- `--color-ok`        oklch(70% 0.120 245)
+- `--color-info`      oklch(72% 0.080 245)
 
 Light Studio companion (when `html` is not dark):
 
-- `--color-paper`     oklch(97% 0.008 155)
-- `--color-paper-2`   oklch(94% 0.010 155)
-- `--color-ink`       oklch(22% 0.020 155)
-- `--color-muted`     oklch(45% 0.020 160)
-- `--color-rule`      oklch(84% 0.012 155)
-- `--color-accent`    oklch(48% 0.110 148)
+- `--color-paper`     oklch(97% 0.008 250)
+- `--color-paper-2`   oklch(94% 0.010 250)
+- `--color-ink`       oklch(22% 0.020 250)
+- `--color-muted`     oklch(45% 0.020 250)
+- `--color-rule`      oklch(84% 0.012 250)
+- `--color-accent`    oklch(48% 0.140 245)
 
 ## Typography
 - Display: Georgia / Iowan Old Style / Palatino, weight 600, style normal (brand wordmark only)
@@ -68,7 +68,7 @@ outside the token block.
 - Esc while running → minimize (existing behaviour; keep)
 
 ## CTA voice
-- Primary CTA: solid moss fill, 6px radius, weight 600, ink-on-accent
+- Primary CTA: solid blue fill, 6px radius, weight 600, ink-on-accent
 - Secondary CTA: paper-2 fill, 1px rule border, same radius/padding as primary
 - Preset chips: 6px radius (not pills), quiet border; hover deepens rule toward accent
 
@@ -77,9 +77,10 @@ outside the token block.
 - Popup / options: page-local `:root` tokens mirroring Veil; no Studio leak concern
 - App surfaces MUST NOT use enrichment — function carries the UI
 - Do not change messaging, storage, API, session-lifecycle, or RPM preset logic
+  beyond the documented session-end clear (CLEAR_JOB + widget/badge removal)
 
 ## What surfaces MUST share
-- Moss accent and its placement (≤ 5% of any view)
+- Blue accent and its placement (≤ 5% of any view)
 - Display + body pairing
 - CTA voice (shape, radius, padding rhythm)
 - Section heading rhythm (small tracked label → content)
@@ -88,6 +89,12 @@ outside the token block.
 ## What surfaces MAY differ on
 - Panel width / density (picker vs job vs options)
 - Light vs dark token set driven by Studio `html[dark]`
+
+## Session chrome
+- No “New session” link in the modal header
+- Finished job footer: secondary “New session” + primary “Close” (both end session via CLEAR_JOB)
+- Running job footer: Stop / Minimize only
+- Status widget + action badge: only while a job is running (minimized unfinished); fully cleared on session end
 
 ## Exports
 

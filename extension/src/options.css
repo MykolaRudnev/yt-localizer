@@ -5,16 +5,16 @@
  */
 
 :root {
-  --color-paper: oklch(15% 0.014 155);
-  --color-paper-2: oklch(19% 0.016 155);
-  --color-paper-3: oklch(23% 0.014 155);
-  --color-ink: oklch(94% 0.010 150);
-  --color-ink-2: oklch(78% 0.018 155);
-  --color-muted: oklch(62% 0.022 160);
-  --color-rule: oklch(32% 0.018 155);
-  --color-accent: oklch(64% 0.100 148);
-  --color-accent-ink: oklch(98% 0.010 150);
-  --color-focus: oklch(72% 0.110 148);
+  --color-paper: oklch(15% 0.014 250);
+  --color-paper-2: oklch(19% 0.016 250);
+  --color-paper-3: oklch(23% 0.014 250);
+  --color-ink: oklch(94% 0.010 250);
+  --color-ink-2: oklch(78% 0.018 250);
+  --color-muted: oklch(62% 0.022 250);
+  --color-rule: oklch(32% 0.018 250);
+  --color-accent: oklch(68% 0.140 245);
+  --color-accent-ink: oklch(98% 0.010 250);
+  --color-focus: oklch(74% 0.130 245);
   --color-warn: oklch(78% 0.110 85);
   --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
   --font-body: "Roboto", "Segoe UI", system-ui, sans-serif;

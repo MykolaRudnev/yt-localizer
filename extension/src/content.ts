@@ -7,6 +7,7 @@ import {
   needsDiscardPreviewConfirm,
   shouldEndSessionOnClose,
   shouldReopenExistingJob,
+  shouldShowJobWidget,
   type TranslateJob,
 } from '@shared/job';
 import { flagForLanguage } from '@shared/langs';
@@ -126,17 +127,20 @@ function connectJobPort() {
 function onJobUpdate(job: TranslateJob | null) {
   currentJob = job;
   const videoId = getVideoId();
-  if (job && videoId && job.videoId === videoId) {
-    if (uiExpanded) renderJobModal(job);
-    else ensureWidget(job);
-  } else if (!job) {
+  if (!job) {
     removeWidget();
     if (uiExpanded && document.getElementById(MODAL_ID)?.dataset.mode === 'job') {
-      minimizeUi();
+      uiExpanded = false;
+      removeModal();
     }
+    return;
+  }
+  if (job && videoId && job.videoId === videoId) {
+    if (uiExpanded) renderJobModal(job);
+    else syncWidget(job);
   } else {
-    // Job for another video — still show widget if on studio
-    if (!uiExpanded) ensureWidget(job);
+    // Job for another video — widget only while still running
+    if (!uiExpanded) syncWidget(job);
   }
 }
 
@@ -151,13 +155,22 @@ function removeModal() {
 function minimizeUi() {
   uiExpanded = false;
   removeModal();
-  if (currentJob) ensureWidget(currentJob);
+  syncWidget(currentJob);
 }
 
 function expandUi(job: TranslateJob) {
   uiExpanded = true;
   removeWidget();
   renderJobModal(job);
+}
+
+/** CLEAR_JOB + tear down widget/modal so SPA reload cannot resurrect chrome. */
+async function clearJobSession(): Promise<void> {
+  await sendMsg({ type: 'CLEAR_JOB' });
+  currentJob = null;
+  removeWidget();
+  uiExpanded = false;
+  removeModal();
 }
 
 /**
@@ -177,11 +190,7 @@ async function closeOrEndJobUi() {
     );
     if (!ok) return;
   }
-  await sendMsg({ type: 'CLEAR_JOB' });
-  currentJob = null;
-  removeWidget();
-  uiExpanded = false;
-  removeModal();
+  await clearJobSession();
 }
 
 /** Modal closes only via X / Esc / Close — never outside click or scroll. */
@@ -290,15 +299,21 @@ async function confirmNewTranslation(): Promise<boolean> {
 }
 
 async function startNewTranslationFromJob() {
-  if (!(await confirmNewTranslation())) return;
-  if (currentJob?.phase === 'running') {
+  const j = currentJob;
+  if (j?.phase === 'running') {
+    if (!(await confirmNewTranslation())) return;
     await sendMsg({ type: 'STOP_TRANSLATE' });
+  } else if (j && shouldEndSessionOnClose(j)) {
+    if (needsDiscardPreviewConfirm(j)) {
+      const ok = confirm(
+        'Close and discard preview? Cached translations are kept for re-use.',
+      );
+      if (!ok) return;
+    }
+  } else if (j) {
+    if (!(await confirmNewTranslation())) return;
   }
-  await sendMsg({ type: 'CLEAR_JOB' });
-  currentJob = null;
-  removeWidget();
-  removeModal();
-  uiExpanded = false;
+  await clearJobSession();
   await openQuickModal();
 }
 
@@ -308,7 +323,20 @@ function removeWidget() {
   document.getElementById(WIDGET_ID)?.remove();
 }
 
+/** Show floating pill only for running jobs; hide otherwise. */
+function syncWidget(job: TranslateJob | null) {
+  if (!shouldShowJobWidget(job)) {
+    removeWidget();
+    return;
+  }
+  ensureWidget(job!);
+}
+
 function ensureWidget(job: TranslateJob) {
+  if (!shouldShowJobWidget(job)) {
+    removeWidget();
+    return;
+  }
   let el = document.getElementById(WIDGET_ID) as HTMLElement | null;
   if (!el) {
     el = document.createElement('div');
@@ -379,34 +407,13 @@ function makeDraggable(el: HTMLElement) {
 
 function paintWidget(el: HTMLElement, job: TranslateJob) {
   const pct = jobPercent(job);
-  const failedN = jobFailed(job).length;
-  let label = '';
-  let icon = '';
-  if (job.phase === 'running') {
-    icon = `<span class="vt-spin" aria-hidden="true"></span>`;
-    label = `Translating ${job.doneCount}/${job.totalCount}`;
-  } else if (failedN) {
-    icon = '⚠';
-    label = `${failedN} failed · ${job.doneCount}/${job.totalCount}`;
-  } else {
-    icon = '✓';
-    label = `Done ${job.doneCount}/${job.totalCount}`;
-  }
-  const review =
-    job.phase !== 'running'
-      ? `<button type="button" class="vt-widget-cta" id="vt-widget-review">Review &amp; publish</button>`
-      : '';
+  const label = `Translating ${job.doneCount}/${job.totalCount}`;
   el.innerHTML = `
     <div class="vt-widget-main">
-      <span class="vt-widget-icon">${icon}</span>
+      <span class="vt-widget-icon"><span class="vt-spin" aria-hidden="true"></span></span>
       <span class="vt-widget-label">${escapeHtml(label)}</span>
     </div>
-    <div class="vt-widget-bar"><div class="vt-widget-fill" style="width:${pct}%"></div></div>
-    ${review}`;
-  el.querySelector('#vt-widget-review')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    expandUi(job);
-  });
+    <div class="vt-widget-bar"><div class="vt-widget-fill" style="width:${pct}%"></div></div>`;
 }
 
 /* ---------- connect / picker ---------- */
@@ -825,7 +832,6 @@ function renderJobModal(job: TranslateJob) {
 function buildProgressShell(root: HTMLElement, job: TranslateJob) {
   const pct = jobPercent(job);
   const eta = jobEta(job);
-  const failed = jobFailed(job);
   const rows = job.languages.map((code) => langRowHtml(code, job)).join('');
   const headerMsg =
     job.fatalSummary && job.phase !== 'running'
@@ -839,7 +845,6 @@ function buildProgressShell(root: HTMLElement, job: TranslateJob) {
       <div class="vt-panel-head">
         <h2 id="vt-title">${job.phase === 'running' ? 'Translating…' : 'Translation job'}</h2>
         <div class="vt-head-actions">
-          <button type="button" class="vt-linkish" id="vt-new">New translation</button>
           <button type="button" class="vt-icon-btn" id="vt-x" aria-label="${
             job.phase === 'running' ? 'Minimize' : 'Close'
           }">×</button>
@@ -863,24 +868,11 @@ function buildProgressShell(root: HTMLElement, job: TranslateJob) {
       }
       ${headerMsg}
       <div id="vt-progress-list" class="vt-progress-list">${rows}</div>
-      <div class="vt-footer sticky" id="vt-job-footer">
-        ${
-          job.phase === 'running'
-            ? `<button type="button" id="vt-stop">Stop</button>`
-            : failed.length
-              ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${failed.length} failed</button>`
-              : ''
-        }
-        <button type="button" id="vt-minimize">${
-          job.phase === 'running' ? 'Minimize' : 'Close'
-        }</button>
-      </div>
+      <div class="vt-footer sticky" id="vt-job-footer"></div>
     </div>`;
 
   bindModalChrome({ root, onClose: () => void closeOrEndJobUi() });
   root.querySelector('#vt-x')!.addEventListener('click', () => void closeOrEndJobUi());
-  root.querySelector('#vt-minimize')!.addEventListener('click', () => void closeOrEndJobUi());
-  root.querySelector('#vt-new')!.addEventListener('click', () => void startNewTranslationFromJob());
   wireJobFooter(root, job);
 }
 
@@ -959,18 +951,22 @@ function wireJobFooter(root: HTMLElement, job: TranslateJob) {
   const failed = jobFailed(job);
   const footer = root.querySelector('#vt-job-footer');
   if (!footer) return;
-  footer.innerHTML = `
-    ${
-      job.phase === 'running'
-        ? `<button type="button" id="vt-stop">Stop</button>`
-        : failed.length
-          ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${failed.length} failed</button>`
+  if (job.phase === 'running') {
+    footer.innerHTML = `
+      <button type="button" id="vt-stop">Stop</button>
+      <button type="button" id="vt-minimize">Minimize</button>`;
+  } else {
+    footer.innerHTML = `
+      ${
+        failed.length
+          ? `<button type="button" id="vt-retry-failed">Retry ${failed.length} failed</button>`
           : ''
-    }
-    <button type="button" id="vt-minimize">${
-      job.phase === 'running' ? 'Minimize' : 'Close'
-    }</button>`;
+      }
+      <button type="button" id="vt-new">New session</button>
+      <button type="button" class="primary" id="vt-minimize">Close</button>`;
+  }
   footer.querySelector('#vt-minimize')?.addEventListener('click', () => void closeOrEndJobUi());
+  footer.querySelector('#vt-new')?.addEventListener('click', () => void startNewTranslationFromJob());
   footer.querySelector('#vt-stop')?.addEventListener('click', () => {
     const btn = footer.querySelector('#vt-stop') as HTMLButtonElement;
     btn.disabled = true;
@@ -1031,7 +1027,6 @@ function paintPreview(
         <div class="vt-panel-head">
           <h2 id="vt-title">Preview translations</h2>
           <div class="vt-head-actions">
-            <button type="button" class="vt-linkish" id="vt-new">New translation</button>
             <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
           </div>
         </div>
@@ -1061,12 +1056,15 @@ function paintPreview(
           </table>
         </div>
         <div class="vt-footer sticky">
-          <button type="button" id="vt-minimize">Close</button>
+          <button type="button" id="vt-new">New session</button>
           ${
             failed.length
               ? `<button type="button" id="vt-retry-failed">Retry ${failed.length} failed</button>`
               : ''
           }
+          <button type="button" ${
+            dryRun || !unpublished.length ? 'class="primary"' : ''
+          } id="vt-minimize">Close</button>
           <button type="button" class="primary" id="vt-publish" ${
             dryRun || !unpublished.length ? 'disabled' : ''
           }>Publish${unpublished.length && unpublished.length < rows.length ? ` ${unpublished.length}` : ''}</button>
@@ -1141,7 +1139,7 @@ function paintPreview(
     });
     root.querySelector('#vt-x')!.addEventListener('click', () => void closeOrEndJobUi());
     root.querySelector('#vt-minimize')!.addEventListener('click', () => void closeOrEndJobUi());
-    root.querySelector('#vt-new')!.addEventListener('click', () => void startNewTranslationFromJob());
+    root.querySelector('#vt-new')?.addEventListener('click', () => void startNewTranslationFromJob());
     root.querySelector('#vt-dry-preview')!.addEventListener('change', async (e) => {
       dryRun = (e.target as HTMLInputElement).checked;
       await sendMsg({ type: 'PATCH_SETTINGS', partial: { dryRun } });
@@ -1218,23 +1216,17 @@ function showResultPanel(
       <div class="vt-footer sticky">
         ${
           opts.failed.length
-            ? `<button type="button" class="primary" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
+            ? `<button type="button" id="vt-retry-failed">Retry ${opts.failed.length} failed</button>`
             : ''
         }
-        <button type="button" id="vt-minimize">Close</button>
-        <button type="button" id="vt-done">Done</button>
+        <button type="button" id="vt-new">New session</button>
+        <button type="button" class="primary" id="vt-minimize">Close</button>
       </div>
     </div>`;
   bindModalChrome({ root, onClose: () => void closeOrEndJobUi() });
   root.querySelector('#vt-x')!.addEventListener('click', () => void closeOrEndJobUi());
   root.querySelector('#vt-minimize')!.addEventListener('click', () => void closeOrEndJobUi());
-  root.querySelector('#vt-done')!.addEventListener('click', async () => {
-    await sendMsg({ type: 'CLEAR_JOB' });
-    currentJob = null;
-    removeWidget();
-    uiExpanded = false;
-    removeModal();
-  });
+  root.querySelector('#vt-new')?.addEventListener('click', () => void startNewTranslationFromJob());
   root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
     const vid = getVideoId() || currentJob?.videoId;
     if (vid) void retryLanguages(vid, opts.failed.map((f) => f.language));
@@ -1263,9 +1255,7 @@ async function bootJobUi() {
   connectJobPort();
   const job = await fetchJob();
   currentJob = job;
-  if (job) {
-    ensureWidget(job);
-  }
+  if (!uiExpanded) syncWidget(job);
 }
 
 let lastUrl = location.href;
@@ -1276,8 +1266,8 @@ function watchSpa() {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       ensureButton();
-      // SPA nav: keep widget; don't tear down job
-      if (currentJob && !uiExpanded) ensureWidget(currentJob);
+      // SPA nav: keep running widget only; never resurrect finished sessions
+      if (!uiExpanded) syncWidget(currentJob);
     } else {
       ensureButton();
     }
@@ -1287,6 +1277,7 @@ function watchSpa() {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       ensureButton();
+      if (!uiExpanded) syncWidget(currentJob);
     }
   }, 1000);
 }

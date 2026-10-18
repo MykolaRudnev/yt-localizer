@@ -1,5 +1,5 @@
 /* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: custom (Veil)
- * vibe: dark mystical restrained moss · designed-as-app · design-system: design.md
+ * vibe: dark mystical restrained · cool blue accent · designed-as-app · design-system: design.md
  * states: default · hover · focus · active · disabled · loading · error · success
  * contrast: pass (scoped Studio overlay)
  * pre-emit critique: P5 H5 E4 S5 R5 V4
@@ -9,25 +9,25 @@
 #veil-translate-btn,
 #vt-job-widget,
 #vt-modal-root {
-  --vt-paper: oklch(15% 0.014 155);
-  --vt-paper-2: oklch(19% 0.016 155);
-  --vt-paper-3: oklch(23% 0.014 155);
-  --vt-ink: oklch(94% 0.010 150);
-  --vt-ink-2: oklch(78% 0.018 155);
-  --vt-muted: oklch(62% 0.022 160);
-  --vt-rule: oklch(32% 0.018 155);
-  --vt-accent: oklch(64% 0.100 148);
-  --vt-accent-ink: oklch(98% 0.010 150);
-  --vt-focus: oklch(72% 0.110 148);
+  --vt-paper: oklch(15% 0.014 250);
+  --vt-paper-2: oklch(19% 0.016 250);
+  --vt-paper-3: oklch(23% 0.014 250);
+  --vt-ink: oklch(94% 0.010 250);
+  --vt-ink-2: oklch(78% 0.018 250);
+  --vt-muted: oklch(62% 0.022 250);
+  --vt-rule: oklch(32% 0.018 250);
+  --vt-accent: oklch(68% 0.140 245);
+  --vt-accent-ink: oklch(98% 0.010 250);
+  --vt-focus: oklch(74% 0.130 245);
   --vt-warn: oklch(78% 0.110 85);
   --vt-warn-bg: oklch(22% 0.040 85);
   --vt-danger: oklch(68% 0.140 25);
   --vt-danger-bg: oklch(22% 0.050 25);
-  --vt-ok: oklch(68% 0.110 148);
-  --vt-ok-bg: oklch(22% 0.040 148);
-  --vt-info: oklch(72% 0.060 220);
-  --vt-info-bg: oklch(22% 0.030 220);
-  --vt-overlay: oklch(8% 0.010 155 / 0.62);
+  --vt-ok: oklch(70% 0.120 245);
+  --vt-ok-bg: oklch(22% 0.045 245);
+  --vt-info: oklch(72% 0.080 245);
+  --vt-info-bg: oklch(22% 0.035 245);
+  --vt-overlay: oklch(8% 0.010 250 / 0.62);
   --vt-font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
   --vt-font-body: "Roboto", "YouTube Noto", "Segoe UI", system-ui, sans-serif;
   --vt-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -52,27 +52,27 @@
 html:not([dark]):not([darker-dark-theme]) #veil-translate-btn,
 html:not([dark]):not([darker-dark-theme]) #vt-job-widget,
 html:not([dark]):not([darker-dark-theme]) #vt-modal-root {
-  --vt-paper: oklch(97% 0.008 155);
-  --vt-paper-2: oklch(94% 0.010 155);
-  --vt-paper-3: oklch(91% 0.012 155);
-  --vt-ink: oklch(22% 0.020 155);
-  --vt-ink-2: oklch(38% 0.020 155);
-  --vt-muted: oklch(45% 0.020 160);
-  --vt-rule: oklch(84% 0.012 155);
-  --vt-accent: oklch(48% 0.110 148);
-  --vt-accent-ink: oklch(98% 0.008 150);
-  --vt-focus: oklch(48% 0.120 148);
+  --vt-paper: oklch(97% 0.008 250);
+  --vt-paper-2: oklch(94% 0.010 250);
+  --vt-paper-3: oklch(91% 0.012 250);
+  --vt-ink: oklch(22% 0.020 250);
+  --vt-ink-2: oklch(38% 0.020 250);
+  --vt-muted: oklch(45% 0.020 250);
+  --vt-rule: oklch(84% 0.012 250);
+  --vt-accent: oklch(48% 0.140 245);
+  --vt-accent-ink: oklch(98% 0.008 250);
+  --vt-focus: oklch(48% 0.140 245);
   --vt-warn: oklch(48% 0.120 75);
   --vt-warn-bg: oklch(94% 0.040 85);
   --vt-danger: oklch(48% 0.150 25);
   --vt-danger-bg: oklch(94% 0.040 25);
-  --vt-ok: oklch(42% 0.110 148);
-  --vt-ok-bg: oklch(94% 0.035 148);
-  --vt-info: oklch(42% 0.070 220);
-  --vt-info-bg: oklch(94% 0.025 220);
-  --vt-overlay: oklch(30% 0.010 155 / 0.45);
-  --vt-shadow-panel: 0 12px 36px oklch(30% 0.02 155 / 0.18);
-  --vt-shadow-widget: 0 4px 18px oklch(30% 0.02 155 / 0.16);
+  --vt-ok: oklch(42% 0.120 245);
+  --vt-ok-bg: oklch(94% 0.035 245);
+  --vt-info: oklch(42% 0.090 245);
+  --vt-info-bg: oklch(94% 0.030 245);
+  --vt-overlay: oklch(30% 0.010 250 / 0.45);
+  --vt-shadow-panel: 0 12px 36px oklch(30% 0.02 250 / 0.18);
+  --vt-shadow-widget: 0 4px 18px oklch(30% 0.02 250 / 0.16);
 }
 
 #veil-translate-btn:focus-visible,
