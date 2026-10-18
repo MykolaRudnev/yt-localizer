@@ -3,7 +3,10 @@
   "name": "VeilTranslate",
   "version": "1.1.0",
   "description": "Translate YouTube titles & descriptions into localizations from Studio.",
-  "permissions": ["storage", "identity"],
+  "permissions": [
+    "storage",
+    "identity"
+  ],
   "host_permissions": [
     "https://www.googleapis.com/*",
     "https://accounts.google.com/*",
@@ -20,9 +23,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://studio.youtube.com/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://studio.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -46,8 +55,14 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["languages.json", "SETUP.md"],
-      "matches": ["https://studio.youtube.com/*"]
+      "resources": [
+        "languages.json",
+        "SETUP.md"
+      ],
+      "matches": [
+        "https://studio.youtube.com/*"
+      ]
     }
-  ]
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx4AUCkJAApfr6nMKEubNMIGDD58rPzqSj1gzHF19nbqgjHPwGB4nYg9bcd6MIQIlGfRqD8qbhWeSKfgZA2YtabP21BiFVwR5pl2DNqSrv761/ur8vUDMxHfi9+vE3CcTVkOJQRqewL7x7bx2fEiv/MJSC9tfngRAvKWmcOi7YD3eXXZe0Z3qOQfUh0OP/1GX9hTij/R1MXiBGhwpzvPuH3NW2bXiSMOZeqgOygMTF5CJtqbuWgMXeUHzOs1gmPUtk9/LcNs7c8OozsuWqSS+N+TscwadcPvFa3dInzuMpPOkMiDzN3yzcZI4ydQgzpcxSqHOyUwfky2rQn8CXBDd0QIDAQAB"
 }
