@@ -1,0 +1,58 @@
+/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: custom (Veil)
+ * vibe: dark mystical restrained moss
+ * paper: oklch(15% 0.014 155) · accent: oklch(64% 0.100 148) moss
+ * display: Georgia · body: Roboto
+ * theme_axes: dark / roman-serif / chromatic-other
+ * designed-as-app · design-system: design.md
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+
+:root {
+  --color-paper: oklch(15% 0.014 155);
+  --color-paper-2: oklch(19% 0.016 155);
+  --color-paper-3: oklch(23% 0.014 155);
+  --color-ink: oklch(94% 0.010 150);
+  --color-ink-2: oklch(78% 0.018 155);
+  --color-muted: oklch(62% 0.022 160);
+  --color-rule: oklch(32% 0.018 155);
+  --color-accent: oklch(64% 0.100 148);
+  --color-accent-ink: oklch(98% 0.010 150);
+  --color-focus: oklch(72% 0.110 148);
+  --color-warn: oklch(78% 0.110 85);
+  --color-warn-bg: oklch(22% 0.040 85);
+  --color-danger: oklch(68% 0.140 25);
+  --color-danger-bg: oklch(22% 0.050 25);
+  --color-ok: oklch(68% 0.110 148);
+  --color-ok-bg: oklch(22% 0.040 148);
+  --color-info: oklch(72% 0.060 220);
+  --color-info-bg: oklch(22% 0.030 220);
+  --color-overlay: oklch(8% 0.010 155 / 0.62);
+
+  --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-body: "Roboto", "YouTube Noto", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --dur-short: 160ms;
+  --dur-med: 220ms;
+
+  --shadow-panel: 0 12px 36px oklch(0% 0 0 / 0.4);
+  --shadow-widget: 0 4px 18px oklch(0% 0 0 / 0.35);
+}

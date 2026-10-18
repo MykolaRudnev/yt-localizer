@@ -1,12 +1,32 @@
+/* Hallmark · genre: atmospheric · macrostructure: Workbench · theme: custom (Veil)
+ * designed-as-app · design-system: design.md
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+
 :root {
-  --bg: #0f1419;
-  --panel: #1a222c;
-  --text: #e8eef4;
-  --muted: #8b9aab;
-  --accent: #3d9a6a;
-  --border: #2a3542;
-  --warn: #c9a227;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  --color-paper: oklch(15% 0.014 155);
+  --color-paper-2: oklch(19% 0.016 155);
+  --color-paper-3: oklch(23% 0.014 155);
+  --color-ink: oklch(94% 0.010 150);
+  --color-ink-2: oklch(78% 0.018 155);
+  --color-muted: oklch(62% 0.022 160);
+  --color-rule: oklch(32% 0.018 155);
+  --color-accent: oklch(64% 0.100 148);
+  --color-accent-ink: oklch(98% 0.010 150);
+  --color-focus: oklch(72% 0.110 148);
+  --color-warn: oklch(78% 0.110 85);
+  --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-body: "Roboto", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-short: 160ms;
 }
 
 * {
@@ -15,9 +35,11 @@
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-paper);
+  color: var(--color-ink);
   line-height: 1.45;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 .wrap {
@@ -26,35 +48,51 @@ body {
   padding: 2rem 1.25rem 4rem;
 }
 
+.brand-mark {
+  margin: 0 0 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
 h1 {
   margin: 0 0 0.25rem;
+  font-family: var(--font-display);
   font-size: 1.75rem;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: -0.02em;
 }
 
 .sub {
-  color: var(--muted);
+  color: var(--color-muted);
   margin: 0 0 1.5rem;
 }
 
 section {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-panel);
   padding: 1.25rem;
   margin-bottom: 1rem;
 }
 
 h2 {
   margin: 0 0 0.75rem;
-  font-size: 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-style: normal;
   display: flex;
   align-items: baseline;
   gap: 0.75rem;
+  letter-spacing: -0.01em;
 }
 
 .count {
   font-size: 0.85rem;
-  color: var(--accent);
+  color: var(--color-accent);
   font-weight: 600;
 }
 
@@ -64,12 +102,14 @@ label {
   gap: 0.35rem;
   margin-bottom: 0.85rem;
   font-size: 0.9rem;
+  color: var(--color-ink-2);
 }
 
 label.row {
   flex-direction: row;
   align-items: center;
   gap: 0.5rem;
+  color: var(--color-ink);
 }
 
 .row-actions {
@@ -88,17 +128,46 @@ label.row {
 input,
 select,
 textarea {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
   padding: 0.5rem 0.65rem;
   font: inherit;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  transition: background var(--dur-short) var(--ease-out);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-muted);
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  background: var(--color-paper-3);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .hint {
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--color-muted);
   margin: 0;
 }
 
@@ -110,24 +179,45 @@ textarea {
 }
 
 button {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.4rem 0.75rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  padding: 0.45rem 0.75rem;
   cursor: pointer;
   font: inherit;
+  transition:
+    border-color var(--dur-short) var(--ease-out),
+    background var(--dur-short) var(--ease-out),
+    filter var(--dur-short) var(--ease-out);
 }
 
 button:hover {
-  border-color: var(--accent);
+  border-color: var(--color-accent);
+  background: var(--color-paper-3);
+}
+
+button:active {
+  transform: translateY(1px);
 }
 
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
   font-weight: 600;
+}
+
+button.primary:hover {
+  filter: brightness(1.06);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .lang-list {
@@ -137,6 +227,10 @@ button.primary {
   grid-template-columns: 1fr 1fr;
   gap: 0.25rem 0.75rem;
   margin-top: 0.5rem;
+  padding: var(--space-2xs);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  background: var(--color-paper);
 }
 
 .lang-item {
@@ -144,7 +238,13 @@ button.primary {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.88rem;
-  padding: 0.15rem 0;
+  padding: 0.25rem 0.2rem;
+  border-radius: 4px;
+  color: var(--color-ink);
+}
+
+.lang-item:hover {
+  background: var(--color-paper-3);
 }
 
 .lang-item.hidden {
@@ -159,20 +259,43 @@ button.primary {
   margin: 0.75rem 0 0.5rem;
   font-size: 0.95rem;
   font-weight: 600;
+  font-style: normal;
 }
 
 .actions {
   display: flex;
   align-items: center;
   gap: 1rem;
+  margin-top: 0.5rem;
 }
 
 #status {
-  color: var(--accent);
+  color: var(--color-accent);
   font-size: 0.9rem;
 }
 
 code {
-  color: var(--warn);
+  color: var(--color-warn);
   word-break: break-all;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+@media (max-width: 560px) {
+  .lang-list {
+    grid-template-columns: 1fr;
+  }
+
+  .wrap {
+    padding: 1.25rem 1rem 3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select,
+  textarea {
+    transition: none;
+  }
 }
