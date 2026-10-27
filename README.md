@@ -16,6 +16,7 @@ Chrome MV3 extension (+ optional CLI) that adds an **Auto Titles & Description**
 - **Engines** — DeepL Free (primary), Gemini free-tier fallback (model auto-pick + quota cascading), LibreTranslate (self-hosted)
 - **Preview before publish** — edit titles/descriptions in a table; dry-run ON by default
 - **Reviewable title shortening** — segment-aware fit to YouTube’s 100-char limit; shortened rows need one-click Approve (or edit) before publish
+- **Optional auto-approve** — accept fitted titles automatically (Options or modal toggle, default off); rows get an *auto-approved* badge
 - **Opt-in auto-publish** — or explicit Publish after preview (shortened titles never auto-publish)
 - **Background jobs** — progress modal, minimized Studio widget, toolbar popup status
 - **Translation cache** — closing the modal mid-job does not throw work away
@@ -115,8 +116,10 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 | Path | Purpose |
 |------|---------|
 | `extension/` | MV3 source (Vite → `extension/dist`) |
+| `extension/src/background/` | Service worker modules (message handlers, job store, translate run, publish) |
+| `extension/src/content/` | Studio UI (session controller, picker, progress / preview / result views, widget) |
 | `extension/dev/` | Mock harness for screenshots |
-| `shared/` | Engines + pipeline (extension + CLI) |
+| `shared/` | Engines, title fitting, pipeline, job state (extension + CLI) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `cli/` | Optional `yt-localizer` CLI |
 | `languages.json` | Language list + presets |
 | `docs/` | Configuration, CLI, screenshots |
@@ -127,6 +130,7 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 | Command | Action |
 |---------|--------|
 | `npm run build` | Build extension + CLI |
+| `npm run typecheck` | `tsc --noEmit` for extension/shared and CLI |
 | `npm test` | Vitest |
 | `npm run screenshots` | Capture `docs/screenshots/*.png` from the mock harness |
 | `npm run yt-localizer` | Run the CLI |

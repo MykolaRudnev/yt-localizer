@@ -12,5 +12,6 @@
     "declaration": false,
     "types": ["node"]
   },
-  "include": ["src/**/*", "../shared/src/**/*"]
+  "include": ["src/**/*", "../shared/src/**/*"],
+  "exclude": ["../**/*.test.ts"]
 }

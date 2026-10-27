@@ -29,7 +29,8 @@
   ],
   "scripts": {
     "build": "npm run build:extension && npm run build:cli",
-    "build:extension": "VT_TARGET=background vite build --config extension/vite.config.ts && VT_TARGET=content vite build --config extension/vite.config.ts && VT_TARGET=options vite build --config extension/vite.config.ts && VT_TARGET=popup vite build --config extension/vite.config.ts",
+    "build:extension": "vite build --config extension/vite.config.ts --mode background && vite build --config extension/vite.config.ts --mode content && vite build --config extension/vite.config.ts --mode options && vite build --config extension/vite.config.ts --mode popup",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p cli/tsconfig.json",
     "build:cli": "tsc -p cli/tsconfig.json",
     "dev": "npm run build:extension",
     "test": "vitest run",

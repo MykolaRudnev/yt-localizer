@@ -1,4 +1,36 @@
-import { DEFAULT_SETTINGS, type AppSettings } from './types.js';
+import { TOP10_CODES } from './langs.js';
+import type { AppSettings, ChannelSettings } from './types.js';
+
+export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
+  selectedLanguages: [...TOP10_CODES],
+  lastUsedLanguages: [...TOP10_CODES],
+  protectedTerms: [],
+  defaultSourceLanguage: 'en',
+  autoPublish: false,
+};
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  selectedLanguages: [...TOP10_CODES],
+  lastUsedLanguages: [...TOP10_CODES],
+  engine: 'gemini',
+  geminiApiKey: '',
+  geminiModel: '',
+  deeplApiKey: '',
+  libreTranslateUrl: 'http://localhost:5000',
+  libreTranslateApiKey: '',
+  oauthClientId: '',
+  titleOver100: 'truncate',
+  protectLastSegment: true,
+  autoApproveReview: false,
+  hashtagMode: 'keep',
+  chapterMode: 'translate_labels',
+  protectedTerms: [],
+  defaultSourceLanguage: 'en',
+  dryRun: true,
+  skipExisting: true,
+  autoFallbackOnQuota: true,
+  geminiThrottleMs: 4000,
+};
 
 /** Trim whitespace/newlines from secrets and URLs (save + use). */
 export function trimSettingsKeys<T extends Partial<AppSettings>>(settings: T): T {

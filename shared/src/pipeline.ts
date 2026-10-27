@@ -1,11 +1,10 @@
 import {
   deeplSupports,
+  GEMINI_FALLBACK_MODEL,
   listGeminiModels,
   normalizeGeminiModelId,
   preflightEngine,
-  rankEligibleChatModels,
   translateTitleDescription,
-  GEMINI_FALLBACK_MODEL,
 } from './engines/index.js';
 import {
   CircuitBreaker,
@@ -16,6 +15,19 @@ import {
   type JobStopReason,
 } from './errors.js';
 import {
+  anySlotLeft,
+  buildEngineConfig,
+  buildFallbackSlots,
+  buildGeminiModelFallbackList,
+  configForSlot,
+  deeplUnsupportedFallbackNote,
+  slotUsable,
+  type FallbackSlot,
+  type GeminiHooks,
+  type JobSettings,
+} from './pipeline/fallback.js';
+import { markGeminiDone, throttleGemini } from './pipeline/throttle.js';
+import {
   earliestResetMs,
   isExhausted,
   markExhausted,
@@ -23,14 +35,16 @@ import {
   quotaStopSummary,
   type ExhaustionMap,
 } from './quota.js';
-import { trimSettingsKeys } from './settings.js';
-import type {
-  AppSettings,
-  EngineConfig,
-  EngineId,
-  LocalizationResult,
-  TranslateOptions,
-} from './types.js';
+import { needsTitleReview } from './review.js';
+import type { EngineId, LocalizationResult, TranslateOptions } from './types.js';
+
+export {
+  buildFallbackSlots,
+  buildGeminiModelFallbackList,
+  deeplUnsupportedFallbackNote,
+  type FallbackSlot,
+  type JobSettings,
+} from './pipeline/fallback.js';
 
 export type LangStatus = 'pending' | 'running' | 'ok' | 'failed' | 'needs_review';
 
@@ -71,217 +85,16 @@ export type TranslateJobResult = {
   pending: string[];
 };
 
-type JobSettings = Pick<
-  AppSettings,
-  | 'engine'
-  | 'geminiApiKey'
-  | 'geminiModel'
-  | 'deeplApiKey'
-  | 'libreTranslateUrl'
-  | 'libreTranslateApiKey'
-  | 'titleOver100'
-  | 'protectLastSegment'
-  | 'hashtagMode'
-  | 'chapterMode'
-  | 'protectedTerms'
-  | 'defaultSourceLanguage'
-> & {
-  autoFallbackOnQuota?: boolean;
-  geminiThrottleMs?: number;
-  geminiAutoModel?: string;
-  geminiJsonModeByModel?: Record<string, boolean>;
-  geminiExhaustedModels?: ExhaustionMap;
-};
-
-export type FallbackSlot =
-  | { engine: 'gemini'; model: string }
-  | { engine: 'deepl' }
-  | { engine: 'libretranslate' };
-
-function engineDisplayName(id: EngineId): string {
-  if (id === 'gemini') return 'Gemini';
-  if (id === 'deepl') return 'DeepL';
-  return 'LibreTranslate';
-}
-
-/** Note when DeepL is skipped for an unsupported target and another engine is used. */
-export function deeplUnsupportedFallbackNote(
-  language: string,
-  usedEngine: EngineId,
-): string {
-  return `DeepL doesn't support ${language} → ${engineDisplayName(usedEngine)}`;
-}
-
-function buildEngineConfig(
-  settings: JobSettings,
-  hooks?: {
-    onGeminiModelResolved?: (model: string) => void | Promise<void>;
-    onGeminiJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
-    onGeminiModelExhausted?: (model: string, untilMs: number) => void | Promise<void>;
-  },
-): EngineConfig {
-  const trimmed = trimSettingsKeys({
-    geminiApiKey: settings.geminiApiKey,
-    deeplApiKey: settings.deeplApiKey,
-    libreTranslateUrl: settings.libreTranslateUrl,
-    libreTranslateApiKey: settings.libreTranslateApiKey,
-    geminiModel: settings.geminiModel,
-  });
-  return {
-    engine: settings.engine,
-    geminiApiKey: trimmed.geminiApiKey,
-    geminiModel: trimmed.geminiModel,
-    geminiAutoModel: settings.geminiAutoModel?.trim(),
-    geminiJsonModeByModel: settings.geminiJsonModeByModel
-      ? { ...settings.geminiJsonModeByModel }
-      : undefined,
-    geminiExhaustedModels: settings.geminiExhaustedModels
-      ? { ...settings.geminiExhaustedModels }
-      : undefined,
-    deeplApiKey: trimmed.deeplApiKey,
-    libreTranslateUrl: trimmed.libreTranslateUrl,
-    libreTranslateApiKey: trimmed.libreTranslateApiKey,
-    onGeminiModelResolved: hooks?.onGeminiModelResolved,
-    onGeminiJsonModeResolved: hooks?.onGeminiJsonModeResolved,
-    onGeminiModelExhausted: hooks?.onGeminiModelExhausted,
-  };
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'));
-      return;
-    }
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(t);
-        reject(new DOMException('Aborted', 'AbortError'));
-      },
-      { once: true },
-    );
-  });
-}
-
-async function throttleGemini(
-  state: { lastAt: number },
-  minMs: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  if (minMs <= 0) return;
-  const wait = state.lastAt + minMs - Date.now();
-  if (wait > 0) await sleep(wait, signal);
-}
-
-function markGeminiDone(state: { lastAt: number }) {
-  state.lastAt = Date.now();
-}
-
-/**
- * Build Gemini model list for fallback: configured model first (if set), then ranked eligible.
- */
-export function buildGeminiModelFallbackList(
-  listed: string[],
-  configured?: string,
-  exhausted: ExhaustionMap = {},
-  nowMs = Date.now(),
-): string[] {
-  const ranked = rankEligibleChatModels(listed);
-  const pool = ranked.length ? ranked : [GEMINI_FALLBACK_MODEL];
-  const trim = configured?.trim();
-  let ordered = pool;
-  if (trim && trim.toLowerCase() !== 'auto') {
-    const id = normalizeGeminiModelId(trim);
-    ordered = [id, ...pool.filter((m) => m !== id)];
-  }
-  return ordered.filter((m) => !isExhausted(exhausted, m, nowMs));
-}
-
-export function buildFallbackSlots(opts: {
-  primary: EngineId;
-  geminiModels: string[];
-  hasDeepl: boolean;
-  hasLibre: boolean;
-  autoFallback: boolean;
-}): FallbackSlot[] {
-  const slots: FallbackSlot[] = [];
-  const pushGemini = () => {
-    for (const model of opts.geminiModels) slots.push({ engine: 'gemini', model });
-  };
-  const pushDeepl = () => {
-    if (opts.hasDeepl) slots.push({ engine: 'deepl' });
-  };
-  const pushLibre = () => {
-    if (opts.hasLibre) slots.push({ engine: 'libretranslate' });
-  };
-
-  if (!opts.autoFallback) {
-    if (opts.primary === 'gemini') pushGemini();
-    else if (opts.primary === 'deepl') pushDeepl();
-    else pushLibre();
-    return slots;
-  }
-
-  if (opts.primary === 'gemini') {
-    pushGemini();
-    pushDeepl();
-    pushLibre();
-  } else if (opts.primary === 'deepl') {
-    pushDeepl();
-    pushGemini();
-    pushLibre();
-  } else {
-    pushLibre();
-    pushGemini();
-    pushDeepl();
-  }
-  return slots;
-}
-
-function configForSlot(base: EngineConfig, slot: FallbackSlot): EngineConfig {
-  if (slot.engine === 'gemini') {
-    return { ...base, engine: 'gemini', geminiModel: slot.model };
-  }
-  return { ...base, engine: slot.engine };
-}
-
-function slotUsable(
-  slot: FallbackSlot,
-  language: string,
-  exhausted: ExhaustionMap,
-  nowMs: number,
-): boolean {
-  if (slot.engine === 'gemini') return !isExhausted(exhausted, slot.model, nowMs);
-  if (slot.engine === 'deepl') return deeplSupports(language);
-  return true;
-}
-
-function anySlotLeft(
-  slots: FallbackSlot[],
-  exhausted: ExhaustionMap,
-  nowMs: number,
-): boolean {
-  return slots.some((s) => {
-    if (s.engine === 'gemini') return !isExhausted(exhausted, s.model, nowMs);
-    return true; // deepl/libre may still help for some languages
-  });
-}
-
 export async function translateAllLanguages(
   title: string,
   description: string,
   languages: string[],
   settings: JobSettings,
   onProgress?: ProgressCb,
-  opts?: {
+  opts?: GeminiHooks & {
     signal?: AbortSignal;
     /** When set, aborted on fatal/circuit so in-flight fetches die. */
     abort?: AbortController;
-    onGeminiModelResolved?: (model: string) => void | Promise<void>;
-    onGeminiJsonModeResolved?: (model: string, jsonMode: boolean) => void | Promise<void>;
-    onGeminiModelExhausted?: (model: string, untilMs: number) => void | Promise<void>;
     /** Skip preflight (tests). Default runs preflight. */
     skipPreflight?: boolean;
     /** Override listed Gemini models (tests). */
@@ -337,6 +150,31 @@ export async function translateAllLanguages(
     await config.onGeminiModelExhausted?.(model, exhausted[model]);
   };
 
+  /** Job never started (no engine / preflight failed): report once, nothing translated. */
+  const failBeforeStart = (
+    face: { summary: string; hint: string },
+    extra: { engine?: EngineId; error?: string; errorDetail?: string; model?: string },
+  ): TranslateJobResult => {
+    onProgress?.({
+      language: '',
+      index: 0,
+      total: languages.length,
+      status: 'failed',
+      stopReason: 'fatal',
+      fatalSummary: face.summary,
+      fatalHint: face.hint,
+      ...extra,
+    });
+    return {
+      ok: [],
+      failed: [],
+      stopReason: 'fatal',
+      fatalSummary: face.summary,
+      fatalHint: face.hint,
+      pending: [...languages],
+    };
+  };
+
   const hasGemini = Boolean(config.geminiApiKey?.trim());
   const hasDeepl = Boolean(config.deeplApiKey?.trim());
   const hasLibre = Boolean(config.libreTranslateUrl?.trim());
@@ -374,29 +212,14 @@ export async function translateAllLanguages(
   });
 
   if (!slots.length) {
-    const face = {
-      summary: 'No translation engine available',
-      hint: 'Add a Gemini or DeepL API key, or configure LibreTranslate in Options.',
-    };
-    onProgress?.({
-      language: '',
-      index: 0,
-      total: languages.length,
-      status: 'failed',
-      error: face.summary,
-      stopReason: 'fatal',
-      fatalSummary: face.summary,
-      fatalHint: face.hint,
-      engine: settings.engine,
-    });
-    return {
-      ok: [],
-      failed: [],
-      stopReason: 'fatal',
-      fatalSummary: face.summary,
-      fatalHint: face.hint,
-      pending: [...languages],
-    };
+    const summary = 'No translation engine available';
+    return failBeforeStart(
+      {
+        summary,
+        hint: 'Add a Gemini or DeepL API key, or configure LibreTranslate in Options.',
+      },
+      { error: summary, engine: settings.engine },
+    );
   }
 
   const firstGemini = slots.find(
@@ -459,28 +282,12 @@ export async function translateAllLanguages(
           continue;
         }
         const face = userFacingError(err);
-        const detail = err instanceof Error ? err.message : String(err);
-        onProgress?.({
-          language: '',
-          index: 0,
-          total: languages.length,
-          status: 'failed',
+        return failBeforeStart(face, {
           error: face.summary,
-          errorDetail: detail,
-          stopReason: 'fatal',
-          fatalSummary: face.summary,
-          fatalHint: face.hint,
+          errorDetail: err instanceof Error ? err.message : String(err),
           model: resolvedModel,
           engine: slot.engine,
         });
-        return {
-          ok: [],
-          failed: [],
-          stopReason: 'fatal',
-          fatalSummary: face.summary,
-          fatalHint: face.hint,
-          pending: [...languages],
-        };
       }
     }
     if (!preflightOk) {
@@ -492,24 +299,7 @@ export async function translateAllLanguages(
             earliestResetMs(exhausted, nowMs),
             nowMs,
           );
-      onProgress?.({
-        language: '',
-        index: 0,
-        total: languages.length,
-        status: 'failed',
-        stopReason: 'fatal',
-        fatalSummary: face.summary,
-        fatalHint: face.hint,
-        engine: lastPreflightSlot?.engine ?? primaryEngine,
-      });
-      return {
-        ok: [],
-        failed: [],
-        stopReason: 'fatal',
-        fatalSummary: face.summary,
-        fatalHint: face.hint,
-        pending: [...languages],
-      };
+      return failBeforeStart(face, { engine: lastPreflightSlot?.engine ?? primaryEngine });
     }
   }
 
@@ -557,8 +347,7 @@ export async function translateAllLanguages(
     if (cached) {
       ok.push(cached);
       breaker.recordSuccess();
-      const cacheStatus: LangStatus =
-        cached.shortened && !cached.reviewed ? 'needs_review' : 'ok';
+      const cacheStatus: LangStatus = needsTitleReview(cached) ? 'needs_review' : 'ok';
       onProgress?.({
         language,
         index: i,
@@ -637,8 +426,7 @@ export async function translateAllLanguages(
         };
         ok.push(loc);
         breaker.recordSuccess();
-        const langStatus: LangStatus =
-          loc.shortened && !loc.reviewed ? 'needs_review' : 'ok';
+        const langStatus: LangStatus = needsTitleReview(loc) ? 'needs_review' : 'ok';
         onProgress?.({
           language,
           index: i,

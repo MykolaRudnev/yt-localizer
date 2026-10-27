@@ -54,6 +54,7 @@ Successful (and partial) translations are cached so closing the modal does not l
 |---------|---------|---------|
 | **Title > 100 chars** | Segment-aware shorten (local, free) · Ask AI to shorten | Segment-aware |
 | **Protect last segment** | Keep the final title segment (e.g. “Focus & Sleep”) when shortening | ON |
+| **Auto-approve review items** | Accept shortened (fitted) titles without clicking Approve | OFF |
 | **Hashtags** | Keep · Translate | Keep |
 | **Chapter lines** | Translate labels, keep timestamps · Keep as is | Translate labels |
 | **Dry-run** | Preview only; Publish disabled | ON on first install |
@@ -66,6 +67,7 @@ YouTube titles are capped at **100 characters**. YT Localizer always keeps the *
 1. **Segment-aware shorten (default)** — splits on `|`, `—`, `–`, ` - `, `·`, `:` and protects the first segment, duration phrases (e.g. `1.5 Hours`, `90 min`, `1,5 часа`, `3 Stunden`, `1.5 時間`), your protected terms, and optionally the last segment. Middles are compacted, then shortened or dropped; never cuts inside a protected segment.
 2. **Ask AI to shorten** — Gemini rewrites the title while respecting those protected phrases, then the same local safety fit applies. Still goes through review.
 3. **Review gate** — every shortened row is **needs review** until you **Approve** (accept auto fit) or **edit** the title (any edit ≤100 unblocks). **Use full** loads the untruncated translation for manual trimming; **Reset** restores the auto fit. Publish is **Publish N ready (M need review)** and only ships ready rows. Auto-publish never publishes shortened rows until reviewed.
+4. **Auto-approve review items** (optional, default OFF) — when ON, rows that would need review are approved automatically with the fitted title, so **Publish** and background **auto-publish** include them immediately. Such rows show an **auto-approved** badge; the progress header, preview, popup and job log report **N auto-approved**. Titles that still exceed 100 characters (e.g. after **Use full**) are never auto-approved. Toggle it in **Options → Global translation options** or with the **Auto-approve shortened titles** checkbox in the Studio modal (language picker, progress and preview). Turning it OFF mid-session sends unpublished auto-approved rows back to review. The translation cache keeps the real review state, so auto-approval is never “remembered” once you switch it off.
 
 The Studio modal can temporarily choose **Overwrite** instead of skip for that job. Dry-run can also be toggled in the modal / popup.
 

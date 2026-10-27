@@ -35,6 +35,8 @@ export interface LocalizationResult {
   autoTitle?: string;
   /** User approved or edited past the review gate. */
   reviewed?: boolean;
+  /** Review gate cleared automatically by the auto-approve option. */
+  autoApproved?: boolean;
 }
 
 export interface TranslateRequest {
@@ -112,6 +114,11 @@ export interface AppSettings {
   titleOver100: TitleOver100;
   /** When fitting titles over 100 chars, keep the last segment (default true). */
   protectLastSegment: boolean;
+  /**
+   * Auto-approve titles that were shortened to fit 100 chars (skip the review gate).
+   * Default OFF — shortened rows need Approve / edit before publishing.
+   */
+  autoApproveReview: boolean;
   hashtagMode: HashtagMode;
   chapterMode: ChapterMode;
   dryRun: boolean;
@@ -134,49 +141,8 @@ export interface AppSettings {
   defaultSourceLanguage: string;
 }
 
-/** Keep in sync with languages.json presets.top10 */
-const TOP10_DEFAULT = [
-  'es',
-  'pt',
-  'hi',
-  'id',
-  'ru',
-  'ja',
-  'ko',
-  'de',
-  'fr',
-  'ar',
-];
-
-export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
-  selectedLanguages: [...TOP10_DEFAULT],
-  lastUsedLanguages: [...TOP10_DEFAULT],
-  protectedTerms: [],
-  defaultSourceLanguage: 'en',
-  autoPublish: false,
-};
-
-export const DEFAULT_SETTINGS: AppSettings = {
-  selectedLanguages: [...TOP10_DEFAULT],
-  lastUsedLanguages: [...TOP10_DEFAULT],
-  engine: 'gemini',
-  geminiApiKey: '',
-  geminiModel: '',
-  deeplApiKey: '',
-  libreTranslateUrl: 'http://localhost:5000',
-  libreTranslateApiKey: '',
-  oauthClientId: '',
-  titleOver100: 'truncate',
-  protectLastSegment: true,
-  hashtagMode: 'keep',
-  chapterMode: 'translate_labels',
-  protectedTerms: [],
-  defaultSourceLanguage: 'en',
-  dryRun: true,
-  skipExisting: true,
-  autoFallbackOnQuota: true,
-  geminiThrottleMs: 4000,
-};
+// Defaults live in settings.ts; re-exported here for backward-compatible imports.
+export { DEFAULT_CHANNEL_SETTINGS, DEFAULT_SETTINGS } from './settings.js';
 
 export interface JobLogEntry {
   id: string;
@@ -186,6 +152,8 @@ export interface JobLogEntry {
   dryRun: boolean;
   ok: string[];
   failed: { language: string; error: string }[];
+  /** Languages whose shortened title was auto-approved (subset of `ok`). */
+  autoApproved?: string[];
 }
 
 export interface VideoSnippet {

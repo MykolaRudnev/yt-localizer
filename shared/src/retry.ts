@@ -1,3 +1,4 @@
+import { sleep } from './async.js';
 import { classifyError, isAbortError } from './errors.js';
 
 export async function withRetry<T>(
@@ -26,22 +27,4 @@ export async function withRetry<T>(
   throw lastErr instanceof Error
     ? lastErr
     : new Error(String(lastErr ?? `${opts.label ?? 'operation'} failed`));
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'));
-      return;
-    }
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(t);
-        reject(new DOMException('Aborted', 'AbortError'));
-      },
-      { once: true },
-    );
-  });
 }

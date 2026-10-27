@@ -12,7 +12,7 @@ npm run build
 Binary entry (via npm script):
 
 ```bash
-npm run yt-localizer -- <videoId> --langs es,de,pl [--engine gemini|deepl|libretranslate] [--dry-run|--publish]
+npm run yt-localizer -- <videoId> --langs es,de,pl [--engine gemini|deepl|libretranslate] [--dry-run|--publish] [--auto-approve]
 ```
 
 ## Secrets file
@@ -20,6 +20,8 @@ npm run yt-localizer -- <videoId> --langs es,de,pl [--engine gemini|deepl|libret
 ```bash
 cp .cli-secrets.example.json .cli-secrets.json
 ```
+
+The file lives in the **repository root** (`cli/.cli-secrets.json`, used by v1.1.0 and earlier, is still read when no root file exists).
 
 Fill in placeholders only in the local file (gitignored):
 
@@ -46,6 +48,14 @@ npm run yt-localizer -- dQw4w9WgXcQ --langs es,de,pl --engine deepl --dry-run
 
 # Publish localizations (merge; does not delete other languages)
 npm run yt-localizer -- dQw4w9WgXcQ --langs es,de --engine gemini --publish
+```
+
+## Title review (`--auto-approve`)
+
+Titles over 100 characters are fitted with the same segment-aware logic as the extension. Like the extension, a **shortened** title needs review: the CLI prints it as `(shortened — needs review)` together with the full translation and **does not publish it**. Pass `--auto-approve` to accept the fitted titles as-is; they are published with the other rows and reported as `N auto-approved`.
+
+```bash
+npm run yt-localizer -- dQw4w9WgXcQ --langs es,de --engine deepl --publish --auto-approve
 ```
 
 ## Notes

@@ -9,6 +9,7 @@ import {
   protectHashtags,
   protectTerms,
   restoreAfterTranslation,
+  restorePrepared,
   titleRemovalDiff,
   truncateTitleAtWordBoundary,
   YT_TITLE_MAX,
@@ -201,6 +202,24 @@ describe('protected terms', () => {
     expect(restoredTitle).toContain('Acme Studio');
     expect(restoredDesc).toContain('https://example.com/@acme');
     expect(restoredDesc).toContain('#Myth');
+  });
+  it('restores title and description with their own placeholders (no index collision)', () => {
+    const prepared = prepareForTranslation(
+      'Live #shorts with Acme',
+      'Tags: #music #shorts — by Bolt https://a.example and https://b.example',
+      {
+        protectedTerms: ['Acme', 'Bolt'],
+        hashtagMode: 'keep',
+        chapterMode: 'keep',
+        titleOver100: 'truncate',
+      },
+    );
+    // Both texts start numbering at 0, so a shared map list would cross-restore.
+    expect(prepared.title).toContain('__HT_0__');
+    expect(prepared.description).toContain('__HT_0__');
+    const [title, desc] = restorePrepared(prepared, prepared.title, prepared.description);
+    expect(title).toBe('Live #shorts with Acme');
+    expect(desc).toBe('Tags: #music #shorts — by Bolt https://a.example and https://b.example');
   });
 });
 

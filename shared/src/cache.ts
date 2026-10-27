@@ -1,14 +1,15 @@
 import type { LocalizationResult, TitleRemovalInfo, TranslateOptions } from './types.js';
 
+// Auto-publish policy moved to autopublish.ts; re-exported for backward-compatible imports.
+export {
+  AUTO_PUBLISH_BATCH,
+  AUTO_PUBLISH_BUCKET,
+  AUTO_PUBLISH_INTERVAL_MS,
+  shouldAutoPublishFlush,
+} from './autopublish.js';
+
 /** Cap distinct videos retained in the translation cache (LRU). */
 export const CACHE_MAX_VIDEOS = 200;
-
-/** Auto-publish when this many unpublished langs are ready. */
-export const AUTO_PUBLISH_BUCKET = 5;
-export const AUTO_PUBLISH_BATCH = AUTO_PUBLISH_BUCKET;
-
-/** Auto-publish if any unpublished langs wait this long. */
-export const AUTO_PUBLISH_INTERVAL_MS = 30_000;
 
 /**
  * Cache entry schema version. Bumped when new fields are added.
@@ -35,6 +36,8 @@ export type CachedTranslation = {
   /** Schema version when written (missing = v1). */
   v?: number;
   fullTitle?: string;
+  /** Auto-fitted title (Reset target); `title` may hold a user edit. Missing = `title`. */
+  autoTitle?: string;
   shortened?: boolean;
   removed?: TitleRemovalInfo[];
   /** User cleared the review gate for a shortened title. */
@@ -127,6 +130,7 @@ export function putCachedTranslation(
     description: entry.description,
     v: entry.v ?? CACHE_SCHEMA_VERSION,
     fullTitle: entry.fullTitle ?? prior?.fullTitle,
+    autoTitle: entry.autoTitle ?? prior?.autoTitle,
     shortened: entry.shortened ?? prior?.shortened,
     removed: entry.removed ?? prior?.removed,
     reviewed: entry.reviewed ?? prior?.reviewed,
@@ -169,8 +173,10 @@ export function markCachedReviewed(
   const bucket = store.videos[videoId];
   if (!bucket?.byLang[language]) return store;
   const byLang = { ...bucket.byLang };
+  const prior = byLang[language];
   byLang[language] = {
-    ...byLang[language],
+    ...prior,
+    autoTitle: prior.autoTitle ?? prior.title,
     title,
     reviewed: true,
     touchedAt: now,
@@ -216,27 +222,9 @@ export function cachedToResult(entry: CachedTranslation): LocalizationResult {
     title: entry.title,
     description: entry.description,
     fullTitle,
-    autoTitle: entry.title,
+    autoTitle: entry.autoTitle ?? entry.title,
     shortened,
     removed: entry.removed,
     reviewed: entry.reviewed ?? !shortened,
   };
-}
-
-/** Whether to flush auto-publish now (batch size, interval, or forced end-of-job). */
-export function shouldAutoPublishFlush(opts: {
-  unpublishedCount: number;
-  lastFlushAt: number;
-  now: number;
-  force?: boolean;
-  batchSize?: number;
-  intervalMs?: number;
-}): boolean {
-  if (opts.unpublishedCount <= 0) return false;
-  if (opts.force) return true;
-  const batch = opts.batchSize ?? AUTO_PUBLISH_BATCH;
-  const interval = opts.intervalMs ?? AUTO_PUBLISH_INTERVAL_MS;
-  if (opts.unpublishedCount >= batch) return true;
-  if (opts.now - opts.lastFlushAt >= interval) return true;
-  return false;
 }

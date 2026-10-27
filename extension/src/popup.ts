@@ -1,10 +1,12 @@
-import { jobFailed, jobPercent, type TranslateJob } from '@shared/job';
+import { jobAutoApproved, jobFailed, jobPercent, type TranslateJob } from '@shared/job';
+import { autoApprovedSummary } from '@shared/review';
 import type { AppSettings } from '@shared/types';
 import {
   connectRuntimePort,
   probeStudioTab,
   sendRuntimeMessage,
 } from './messaging';
+import { escapeAttr, escapeHtml } from './ui/html';
 
 type ChannelView = {
   id: string;
@@ -121,6 +123,8 @@ function renderJob(job: TranslateJob | null) {
   if (job.phase === 'running') status = `Translating ${job.doneCount}/${job.totalCount}`;
   else if (failedN) status = `⚠ ${failedN} failed · ${job.doneCount}/${job.totalCount}`;
   else status = `✓ Done ${job.doneCount}/${job.totalCount}`;
+  const autoApproved = autoApprovedSummary(jobAutoApproved(job).length);
+  if (autoApproved) status += ` · ${autoApproved}`;
   $('jobSummary').innerHTML = `
     <div class="job-line"><span class="muted">Video</span> <code>${escapeHtml(job.videoId)}</code></div>
     <div class="job-line">${escapeHtml(status)} · ${pct}%</div>`;
@@ -255,18 +259,6 @@ function renderStatus(
   $('langCount').textContent = `${settings.selectedLanguages.length} selected`;
   const active = channels.find((c) => c.id === activeChannelId);
   $('activeChannel').textContent = active?.title ?? (channels.length ? '—' : 'none');
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeAttr(s: string): string {
-  return escapeHtml(s).replace(/'/g, '&#39;');
 }
 
 void load();

@@ -767,6 +767,19 @@ html:not([dark]):not([darker-dark-theme]) #vt-modal-root {
   margin-bottom: 0.25rem;
 }
 
+#vt-modal-root .vt-auto-approved-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--vt-ok);
+  margin: 0 0 0.25rem 0.5rem;
+}
+
+#vt-modal-root .vt-auto-approved-badge[hidden] {
+  display: none;
+}
+
 #vt-modal-root .vt-counter {
   font-size: 0.6875rem;
   color: var(--vt-muted);

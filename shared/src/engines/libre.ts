@@ -1,6 +1,15 @@
-import type { TranslateOptions, TranslationEngine } from '../types.js';
+import type { TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
-import { prepareForTranslation, restoreAfterTranslation } from '../text.js';
+import { prepareForTranslation, restorePrepared } from '../text/placeholders.js';
+
+/** Cheap reachability check (`GET /languages`). */
+export async function preflightLibreTranslate(baseUrl: string, signal?: AbortSignal): Promise<void> {
+  const root = baseUrl.trim().replace(/\/$/, '');
+  const res = await fetch(`${root}/languages`, { signal });
+  if (!res.ok) {
+    throw new Error(`LibreTranslate ${res.status}: preflight failed`);
+  }
+}
 
 export function createLibreTranslateEngine(
   baseUrl: string,
@@ -42,8 +51,11 @@ export function createLibreTranslateEngine(
           { label: 'libretranslate', signal: options.signal },
         );
 
-      const outTitle = restoreAfterTranslation(await translateOne(prepared.title), prepared.maps);
-      const outDesc = restoreAfterTranslation(await translateOne(prepared.description), prepared.maps);
+      const [outTitle, outDesc] = restorePrepared(
+        prepared,
+        await translateOne(prepared.title),
+        await translateOne(prepared.description),
+      );
       // Full title kept; segment-aware fit happens in translateTitleDescription.
       return [outTitle, outDesc];
     },

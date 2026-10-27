@@ -1,6 +1,6 @@
-import type { TranslateOptions, TranslationEngine } from '../types.js';
+import type { TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
-import { prepareForTranslation, restoreAfterTranslation } from '../text.js';
+import { prepareForTranslation, restorePrepared } from '../text/placeholders.js';
 
 /** DeepL Free supported language codes (subset). */
 const DEEPL_LANGS = new Set([
@@ -21,11 +21,41 @@ export function deeplSupports(lang: string): boolean {
   return toDeeplCode(lang) !== null;
 }
 
-export function createDeeplEngine(apiKey: string): TranslationEngine {
-  const key = apiKey.trim();
-  const endpoint = key.endsWith(':fx')
+/** Free-plan keys end in `:fx` and use the api-free host. */
+export function deeplEndpoint(apiKey: string): string {
+  return apiKey.trim().endsWith(':fx')
     ? 'https://api-free.deepl.com/v2/translate'
     : 'https://api.deepl.com/v2/translate';
+}
+
+function deeplHeaders(key: string): Record<string, string> {
+  return {
+    Authorization: `DeepL-Auth-Key ${key}`,
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+}
+
+/** Cheap key check: translate "." to EN. Throws `DeepL <status>: …` on failure. */
+export async function preflightDeepl(apiKey: string, signal?: AbortSignal): Promise<void> {
+  const key = apiKey.trim();
+  const body = new URLSearchParams();
+  body.append('text', '.');
+  body.append('target_lang', 'EN');
+  const res = await fetch(deeplEndpoint(key), {
+    method: 'POST',
+    headers: deeplHeaders(key),
+    body,
+    signal,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`DeepL ${res.status}: ${err.slice(0, 200)}`);
+  }
+}
+
+export function createDeeplEngine(apiKey: string): TranslationEngine {
+  const key = apiKey.trim();
+  const endpoint = deeplEndpoint(key);
 
   return {
     id: 'deepl',
@@ -48,10 +78,7 @@ export function createDeeplEngine(apiKey: string): TranslationEngine {
 
         const res = await fetch(endpoint, {
           method: 'POST',
-          headers: {
-            Authorization: `DeepL-Auth-Key ${key}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
+          headers: deeplHeaders(key),
           body,
           signal: options.signal,
         });
@@ -64,8 +91,7 @@ export function createDeeplEngine(apiKey: string): TranslationEngine {
         return data.translations.map((t) => t.text);
       }, { label: 'deepl', signal: options.signal });
 
-      const outTitle = restoreAfterTranslation(translated[0], prepared.maps);
-      const outDesc = restoreAfterTranslation(translated[1], prepared.maps);
+      const [outTitle, outDesc] = restorePrepared(prepared, translated[0], translated[1]);
       // Full title kept; segment-aware fit happens in translateTitleDescription.
       return [outTitle, outDesc];
     },

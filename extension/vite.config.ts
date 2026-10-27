@@ -5,9 +5,13 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 const root = resolve(__dirname);
 const outDir = resolve(root, 'dist');
 const alias = { '@shared': resolve(root, '../shared/src') };
-const target = process.env.VT_TARGET ?? 'background';
+type BuildTarget = 'background' | 'content' | 'options' | 'popup';
 
-function config(): UserConfig {
+/**
+ * One entry per build: `vite build --mode <target>` (cross-platform).
+ * `VT_TARGET` env still wins for backward compatibility with old scripts.
+ */
+function config(target: BuildTarget): UserConfig {
   if (target === 'content') {
     return {
       root,
@@ -105,4 +109,6 @@ function config(): UserConfig {
   };
 }
 
-export default defineConfig(config());
+export default defineConfig(({ mode }) =>
+  config((process.env.VT_TARGET ?? mode) as BuildTarget),
+);

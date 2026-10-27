@@ -229,7 +229,7 @@ describe('review gate + publish counts', () => {
     expect(jobNeedsReview(job).map((r) => r.language)).toEqual(['es']);
     expect(jobResults(job).map((r) => r.language)).toEqual(['de']);
     expect(jobUnpublished(job).map((r) => r.language)).toEqual(['de']);
-    expect(jobPublishCounts(job)).toEqual({ ready: 1, needReview: 1 });
+    expect(jobPublishCounts(job)).toEqual({ ready: 1, needReview: 1, autoApproved: 0 });
     expect(jobPreviewRows(job)).toHaveLength(2);
 
     job = reduceJob(job, { type: 'review', language: 'es', action: 'approve' })!;

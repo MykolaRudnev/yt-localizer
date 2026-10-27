@@ -69,6 +69,7 @@ function readGlobalForm(): AppSettings {
     oauthClientId: ($('oauthClientId') as HTMLInputElement).value,
     titleOver100: ($('titleOver100') as HTMLSelectElement).value as AppSettings['titleOver100'],
     protectLastSegment: ($('protectLastSegment') as HTMLInputElement).checked,
+    autoApproveReview: ($('autoApproveReview') as HTMLInputElement).checked,
     hashtagMode: ($('hashtagMode') as HTMLSelectElement).value as AppSettings['hashtagMode'],
     chapterMode: ($('chapterMode') as HTMLSelectElement).value as AppSettings['chapterMode'],
     dryRun: ($('dryRun') as HTMLInputElement).checked,
@@ -91,6 +92,7 @@ function fillGlobalForm(s: AppSettings) {
   ($('libreTranslateApiKey') as HTMLInputElement).value = s.libreTranslateApiKey;
   ($('titleOver100') as HTMLSelectElement).value = s.titleOver100;
   ($('protectLastSegment') as HTMLInputElement).checked = s.protectLastSegment !== false;
+  ($('autoApproveReview') as HTMLInputElement).checked = s.autoApproveReview === true;
   ($('hashtagMode') as HTMLSelectElement).value = s.hashtagMode;
   ($('chapterMode') as HTMLSelectElement).value = s.chapterMode;
   ($('dryRun') as HTMLInputElement).checked = s.dryRun;

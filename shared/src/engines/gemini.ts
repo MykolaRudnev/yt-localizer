@@ -2,7 +2,8 @@ import type { TranslateOptions, TranslationEngine } from '../types.js';
 import { withRetry } from '../retry.js';
 import { isJsonModeUnsupportedError, isModelNotFoundError } from '../errors.js';
 export { isJsonModeUnsupportedError } from '../errors.js';
-import { prepareForTranslation, restoreAfterTranslation, YT_TITLE_MAX } from '../text.js';
+import { YT_TITLE_MAX } from '../limits.js';
+import { prepareForTranslation, restorePrepared } from '../text/placeholders.js';
 
 /** Stable alias used when listing models fails. */
 export const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
@@ -404,8 +405,7 @@ export function createGeminiEngine(
         { label: 'gemini', signal },
       );
 
-      const outTitle = restoreAfterTranslation(result.title, prepared.maps);
-      const outDesc = restoreAfterTranslation(result.description, prepared.maps);
+      const [outTitle, outDesc] = restorePrepared(prepared, result.title, result.description);
       // Full title kept; segment-aware / AI fit happens in translateTitleDescription.
       return [outTitle, outDesc];
     },

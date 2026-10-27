@@ -29,4 +29,10 @@ describe('trimSettingsKeys / normalizeAppSettings', () => {
     expect(saved.deeplApiKey).toBe('my-key:fx');
     expect(saved.geminiApiKey).toBe('unused');
   });
+
+  it('auto-approve review items defaults OFF; settings saved before v1.2 keep working', () => {
+    expect(normalizeAppSettings({}).autoApproveReview).toBe(false);
+    expect(normalizeAppSettings({ engine: 'deepl' }).autoApproveReview).toBe(false);
+    expect(normalizeAppSettings({ autoApproveReview: true }).autoApproveReview).toBe(true);
+  });
 });

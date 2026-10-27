@@ -6,6 +6,7 @@ Thanks for helping improve YT Localizer.
 
 ```bash
 npm ci
+npm run typecheck
 npm test
 npm run build
 ```
@@ -32,5 +33,7 @@ npm run screenshots
 | `extension/` | Chrome MV3 UI + service worker |
 | `shared/` | Engines, pipeline, YouTube helpers (extension + CLI) |
 | `cli/` | Optional Node CLI |
+
+Module map: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Questions or ideas: open a GitHub issue.

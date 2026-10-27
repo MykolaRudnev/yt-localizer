@@ -8,6 +8,7 @@ import {
   hashTranslationSource,
   lookupCachedTranslation,
   markCachedPublished,
+  markCachedReviewed,
   putCachedTranslation,
   shouldAutoPublishFlush,
   translationCacheStats,
@@ -171,5 +172,24 @@ describe('auto-publish batching + merge', () => {
       de: { title: 'DE', description: 'd' },
       ja: { title: 'JA', description: 'j' },
     });
+  });
+});
+
+describe('cache autoTitle (Reset target) after a user edit', () => {
+  it('keeps the auto-fitted title when the reviewed title is an edit', () => {
+    let store = putCachedTranslation(emptyTranslationCache(), 'v', {
+      language: 'es',
+      sourceHash: 'h',
+      title: 'Auto fit',
+      description: 'd',
+      fullTitle: 'Auto fit plus a much longer middle segment',
+      shortened: true,
+      reviewed: false,
+    });
+    store = markCachedReviewed(store, 'v', 'es', 'My edit');
+    const r = cachedToResult(lookupCachedTranslation(store, 'v', 'es', 'h')!);
+    expect(r.title).toBe('My edit');
+    expect(r.autoTitle).toBe('Auto fit');
+    expect(r.reviewed).toBe(true);
   });
 });
