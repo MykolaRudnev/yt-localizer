@@ -9,7 +9,7 @@ import { autoApprovedSummary } from '@shared/review';
 import { engineLabel, escapeAttr, escapeHtml } from '../ui/html';
 import { icon } from '../ui/icons';
 import type { JobUiActions } from './actions';
-import { sendMsg, setAutoApprove } from './api';
+import { bindAutoApproveToggle, sendMsg } from './api';
 import {
   $req,
   bindModalChrome,
@@ -116,9 +116,7 @@ function buildProgressShell(root: HTMLElement, job: TranslateJob, actions: JobUi
 
   bindModalChrome({ root, onClose: actions.close });
   $req(root, '#vt-x').addEventListener('click', actions.close);
-  $req(root, '#vt-autoapprove-job').addEventListener('change', (e) => {
-    void setAutoApprove((e.target as HTMLInputElement).checked).then(actions.applyJob);
-  });
+  bindAutoApproveToggle($req<HTMLInputElement>(root, '#vt-autoapprove-job'), actions.applyJob);
   wireJobFooter(root, job, actions);
 }
 

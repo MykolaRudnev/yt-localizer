@@ -202,6 +202,16 @@ function evictLruVideos(
   return next;
 }
 
+/** Video ids to drop so at most `maxVideos` remain (least recently touched first). */
+export function lruOverflow(
+  index: Record<string, number>,
+  maxVideos = CACHE_MAX_VIDEOS,
+): string[] {
+  const ids = Object.keys(index);
+  if (ids.length <= maxVideos) return [];
+  return ids.sort((a, b) => index[a] - index[b]).slice(0, ids.length - maxVideos);
+}
+
 export function translationCacheStats(store: TranslationCacheStore): {
   videos: number;
   entries: number;

@@ -373,6 +373,7 @@ export async function translateAllLanguages(
     let usedEngine: EngineId | undefined;
     let usedModel: string | undefined;
     let skippedDeeplUnsupported = false;
+    let okResult: LocalizationResult | undefined;
 
     for (const slot of slots) {
       if (!slotUsable(slot, language, exhausted, nowMs)) {
@@ -442,7 +443,7 @@ export async function translateAllLanguages(
           engine: slot.engine,
           note,
         });
-        await opts?.onLanguageOk?.(loc, { cached: false });
+        okResult = loc;
         langOk = true;
         break;
       } catch (err) {
@@ -464,7 +465,12 @@ export async function translateAllLanguages(
     }
 
     if (stopReason === 'aborted') break;
-    if (langOk) continue;
+    if (langOk) {
+      // Outside the engine try/catch: a failed save (e.g. storage full) must stop the job,
+      // not be mistaken for an engine error and burn another model on the same language.
+      if (okResult) await opts?.onLanguageOk?.(okResult, { cached: false });
+      continue;
+    }
 
     // Nothing left that can serve remaining work
     if (

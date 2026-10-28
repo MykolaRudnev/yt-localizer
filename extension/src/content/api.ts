@@ -32,8 +32,33 @@ export async function confirmAutoPublish(): Promise<boolean> {
   return ok;
 }
 
-/** Persist auto-approve and apply it to the active job; returns the updated job. */
-export async function setAutoApprove(enabled: boolean): Promise<TranslateJob | null> {
-  const res = await sendMsg<JobResponse>({ type: 'SET_AUTO_APPROVE', enabled });
-  return res?.job ?? null;
+/**
+ * Persist auto-approve and apply it to the active job; returns the updated job.
+ * Throws when the background fails — a failed toggle must not read as "no job"
+ * (that tears the modal down).
+ */
+export async function setAutoApprove(enabled: boolean): Promise<TranslateJob> {
+  const res = await sendMsg<JobResponse & { error?: string }>({ type: 'SET_AUTO_APPROVE', enabled });
+  if (!res.ok || !res.job) throw new Error(res.error ?? 'Could not change auto-approve');
+  return res.job;
+}
+
+/** Toggle handler shared by the job views: apply on success, revert + explain on failure. */
+export function bindAutoApproveToggle(
+  input: HTMLInputElement,
+  applyJob: (job: TranslateJob) => void,
+): void {
+  input.addEventListener('change', () => {
+    const enabled = input.checked;
+    input.disabled = true;
+    setAutoApprove(enabled)
+      .then(applyJob)
+      .catch((err: unknown) => {
+        input.checked = !enabled;
+        alert(`YT Localizer: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        input.disabled = false;
+      });
+  });
 }

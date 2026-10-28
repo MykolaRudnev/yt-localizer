@@ -14,7 +14,7 @@ import type { JobResponse, PublishResponse } from '../protocol';
 import { escapeAttr, escapeHtml } from '../ui/html';
 import { icon } from '../ui/icons';
 import type { JobUiActions } from './actions';
-import { confirmAutoPublish, sendMsg, setAutoApprove } from './api';
+import { bindAutoApproveToggle, confirmAutoPublish, sendMsg } from './api';
 import { $req, bindModalChrome, ensureModalRoot, modalMode, panelHeadHtml } from './dom';
 import { AUTO_APPROVE_HINT, AUTO_APPROVE_LABEL } from './labels';
 import { showResultPanel, syncResultPanel } from './result-view';
@@ -524,9 +524,7 @@ function wirePreviewChrome(
     }
     repaint();
   });
-  $req(root, '#vt-autoapprove-preview').addEventListener('change', (e) => {
-    void setAutoApprove((e.target as HTMLInputElement).checked).then(actions.applyJob);
-  });
+  bindAutoApproveToggle($req<HTMLInputElement>(root, '#vt-autoapprove-preview'), actions.applyJob);
   root.querySelector('#vt-retry-failed')?.addEventListener('click', () => {
     actions.retry(
       job.videoId,

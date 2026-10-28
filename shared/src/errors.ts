@@ -41,12 +41,20 @@ export function isJsonModeUnsupportedError(err: unknown): boolean {
 export function isQuotaExhaustedError(err: unknown): boolean {
   const status = extractHttpStatus(err);
   const msg = err instanceof Error ? err.message : String(err);
+  // chrome.storage "QUOTA_BYTES quota exceeded" is a local disk limit, not an API quota.
+  if (isStorageQuotaError(err)) return false;
   // DeepL Free/Pro: HTTP 456 = Quota exceeded
   if (status === 456) return true;
   if (status === 429 && /quota|RESOURCE_EXHAUSTED|daily|exceeded your current quota/i.test(msg)) {
     return true;
   }
   return /Quota exceeded/i.test(msg);
+}
+
+/** chrome.storage write rejected because the extension's storage quota is full. */
+export function isStorageQuotaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /QUOTA_BYTES|kQuotaBytes/i.test(msg);
 }
 
 /**
@@ -95,6 +103,13 @@ export function userFacingError(err: unknown): { summary: string; hint: string }
   const msg = err instanceof Error ? err.message : String(err);
   const status = extractHttpStatus(err);
   const engine = engineFromErrorMessage(msg);
+
+  if (isStorageQuotaError(err)) {
+    return {
+      summary: 'Extension storage is full',
+      hint: 'Clear the translation cache in Options, then use Retry for the remaining languages.',
+    };
+  }
 
   if (engine === 'DeepL' && (status === 401 || status === 403)) {
     return {

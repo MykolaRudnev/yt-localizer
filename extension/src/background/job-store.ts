@@ -26,10 +26,11 @@ export async function loadJob(): Promise<TranslateJob | null> {
 
 export async function persistJob(job: TranslateJob | null): Promise<void> {
   memoryJob = job;
-  await setActiveJob(job);
-  await updateBadge(job);
+  // UI first: a failing storage write must never freeze the progress view.
   broadcastJob(job);
+  await updateBadge(job);
   await ensureKeepAlive(job?.phase === 'running');
+  await setActiveJob(job);
 }
 
 /** Reduce the job with `action` only if it is still the job `jobId` (stale callbacks are dropped). */

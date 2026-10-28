@@ -28,7 +28,7 @@ import {
   getGeminiExhaustedModels,
   getGeminiJsonModeByModel,
   getSettings,
-  getTranslationCache,
+  getVideoTranslationCache,
   markTranslationsPublished,
   patchChannelSettings,
   setGeminiAutoModel,
@@ -223,7 +223,7 @@ async function runJob(ctx: RunContext): Promise<void> {
   };
 
   const onLanguageOk = async (result: LocalizationResult, meta: { cached: boolean }) => {
-    const store = await getTranslationCache();
+    const store = await getVideoTranslationCache(videoId);
     const prevHit = lookupCachedTranslation(store, videoId, result.language, sourceHash);
     const needsReview = needsTitleReview(result);
     // Cache keeps the real review state; auto-approve is applied per job only.
@@ -282,7 +282,7 @@ async function runJob(ctx: RunContext): Promise<void> {
         onGeminiJsonModeResolved: (model, jsonMode) => setGeminiModelJsonMode(model, jsonMode),
         onGeminiModelExhausted: (model, untilMs) => setGeminiModelExhausted(model, untilMs),
         lookupCache: async (language) => {
-          const store = await getTranslationCache();
+          const store = await getVideoTranslationCache(videoId);
           const hit = lookupCachedTranslation(store, videoId, language, sourceHash);
           return hit ? cachedToResult(hit) : null;
         },

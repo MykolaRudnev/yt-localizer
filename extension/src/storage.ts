@@ -8,11 +8,13 @@ import type {
 import { seedChannelSettings } from '@shared/channels';
 import {
   emptyTranslationCache,
+  lruOverflow,
   markCachedPublished,
   putCachedTranslation,
   translationCacheStats,
   type CachedTranslation,
   type TranslationCacheStore,
+  type VideoCacheBucket,
 } from '@shared/cache';
 import { normalizeAppSettings, trimSettingsKeys } from '@shared/settings';
 
@@ -264,39 +266,106 @@ export async function setWidgetPos(pos: WidgetPos): Promise<void> {
   await chrome.storage.local.set({ [WIDGET_POS_KEY]: pos });
 }
 
-export async function getTranslationCache(): Promise<TranslationCacheStore> {
-  const data = await chrome.storage.local.get(TRANSLATION_CACHE_KEY);
-  const raw = data[TRANSLATION_CACHE_KEY] as TranslationCacheStore | undefined;
-  if (!raw?.videos || typeof raw.videos !== 'object') return emptyTranslationCache();
-  return raw;
+/*
+ * Translation cache: one storage key per video (`translationCache:v:<id>`) plus
+ * an LRU index (`translationCache:index`, id → touchedAt). A job only ever
+ * reads/writes its own video's bucket, so cost no longer grows with the number
+ * of cached videos. The legacy single-blob key is split once on first access.
+ */
+const cacheVideoKey = (videoId: string) => `${TRANSLATION_CACHE_KEY}:v:${videoId}`;
+const CACHE_INDEX_KEY = `${TRANSLATION_CACHE_KEY}:index`;
+
+type CacheIndex = Record<string, number>;
+
+let cacheMigration: Promise<void> | null = null;
+
+/** Split the legacy `translationCache` blob into per-video keys (runs once per worker). */
+function migrateLegacyCache(): Promise<void> {
+  cacheMigration ??= (async () => {
+    const data = await chrome.storage.local.get([TRANSLATION_CACHE_KEY, CACHE_INDEX_KEY]);
+    const legacy = data[TRANSLATION_CACHE_KEY] as TranslationCacheStore | undefined;
+    if (!legacy) return;
+    const index: CacheIndex = { ...((data[CACHE_INDEX_KEY] as CacheIndex | undefined) ?? {}) };
+    const items: Record<string, unknown> = {};
+    for (const [id, bucket] of Object.entries(legacy.videos ?? {})) {
+      items[cacheVideoKey(id)] = bucket;
+      index[id] = bucket.touchedAt;
+    }
+    items[CACHE_INDEX_KEY] = index;
+    await chrome.storage.local.set(items);
+    await chrome.storage.local.remove(TRANSLATION_CACHE_KEY);
+  })().catch((err) => {
+    cacheMigration = null;
+    throw err;
+  });
+  return cacheMigration;
 }
 
-export async function saveTranslationCache(store: TranslationCacheStore): Promise<void> {
-  await chrome.storage.local.set({ [TRANSLATION_CACHE_KEY]: store });
+async function getCacheIndex(): Promise<CacheIndex> {
+  const data = await chrome.storage.local.get(CACHE_INDEX_KEY);
+  return (data[CACHE_INDEX_KEY] as CacheIndex | undefined) ?? {};
+}
+
+/** Cache store holding just `videoId`'s bucket (empty when not cached). */
+export async function getVideoTranslationCache(videoId: string): Promise<TranslationCacheStore> {
+  await migrateLegacyCache();
+  const key = cacheVideoKey(videoId);
+  const bucket = (await chrome.storage.local.get(key))[key] as VideoCacheBucket | undefined;
+  return bucket?.byLang ? { videos: { [videoId]: bucket } } : emptyTranslationCache();
+}
+
+/** Persist `videoId`'s bucket from `store`, bump it in the LRU index and evict overflow. */
+export async function saveVideoTranslationCache(
+  videoId: string,
+  store: TranslationCacheStore,
+): Promise<void> {
+  const bucket = store.videos[videoId];
+  if (!bucket) return;
+  await migrateLegacyCache();
+  const index = { ...(await getCacheIndex()), [videoId]: bucket.touchedAt };
+  const drop = lruOverflow(index);
+  for (const id of drop) delete index[id];
+  await chrome.storage.local.set({ [cacheVideoKey(videoId)]: bucket, [CACHE_INDEX_KEY]: index });
+  if (drop.length) await chrome.storage.local.remove(drop.map(cacheVideoKey));
 }
 
 export async function cacheTranslation(
   videoId: string,
   entry: Omit<CachedTranslation, 'touchedAt'> & { touchedAt?: number },
 ): Promise<void> {
-  const store = await getTranslationCache();
-  await saveTranslationCache(putCachedTranslation(store, videoId, entry));
+  const store = await getVideoTranslationCache(videoId);
+  await saveVideoTranslationCache(videoId, putCachedTranslation(store, videoId, entry));
 }
 
 export async function markTranslationsPublished(
   videoId: string,
   languages: string[],
 ): Promise<void> {
-  const store = await getTranslationCache();
-  await saveTranslationCache(markCachedPublished(store, videoId, languages));
+  const store = await getVideoTranslationCache(videoId);
+  await saveVideoTranslationCache(videoId, markCachedPublished(store, videoId, languages));
 }
 
 export async function clearTranslationCache(): Promise<void> {
-  await chrome.storage.local.remove(TRANSLATION_CACHE_KEY);
+  await migrateLegacyCache();
+  const index = await getCacheIndex();
+  await chrome.storage.local.remove([
+    TRANSLATION_CACHE_KEY,
+    CACHE_INDEX_KEY,
+    ...Object.keys(index).map(cacheVideoKey),
+  ]);
 }
 
 export async function getTranslationCacheStats(): Promise<{ videos: number; entries: number }> {
-  return translationCacheStats(await getTranslationCache());
+  await migrateLegacyCache();
+  const ids = Object.keys(await getCacheIndex());
+  if (!ids.length) return { videos: 0, entries: 0 };
+  const data = await chrome.storage.local.get(ids.map(cacheVideoKey));
+  const videos: TranslationCacheStore['videos'] = {};
+  for (const id of ids) {
+    const bucket = data[cacheVideoKey(id)] as VideoCacheBucket | undefined;
+    if (bucket?.byLang) videos[id] = bucket;
+  }
+  return translationCacheStats({ videos });
 }
 
 export async function getAutoPublishAcked(): Promise<boolean> {

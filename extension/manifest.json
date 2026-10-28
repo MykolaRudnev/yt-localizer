@@ -6,6 +6,7 @@
   "description": "Translate YouTube titles & descriptions into official localizations from Studio.",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "identity",
     "alarms",
     "tabs",

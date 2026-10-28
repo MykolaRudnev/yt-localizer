@@ -8,15 +8,15 @@ import {
   getChannelSettings,
   getChannels,
   getSettings,
-  getTranslationCache,
   getTranslationCacheStats,
+  getVideoTranslationCache,
   getWidgetPos,
   patchChannelSettings,
   patchSettings,
   saveSettings,
-  saveTranslationCache,
   setActiveChannelId,
   setAutoPublishAcked,
+  saveVideoTranslationCache,
   setWidgetPos,
 } from '../storage';
 import { loadJob, persistJob, updateJob } from './job-store';
@@ -142,8 +142,11 @@ async function reviewLanguage(message: Extract<BackgroundMessage, { type: 'REVIE
   const st = next.langStates[message.language];
   // Only a user decision clears the cached review gate (auto-approve is per job).
   if (st?.status === 'ok' && st.title != null && !st.autoApproved) {
-    const store = await getTranslationCache();
-    await saveTranslationCache(markCachedReviewed(store, next.videoId, message.language, st.title));
+    const store = await getVideoTranslationCache(next.videoId);
+    await saveVideoTranslationCache(
+      next.videoId,
+      markCachedReviewed(store, next.videoId, message.language, st.title),
+    );
   }
   return { ok: true, job: next };
 }
