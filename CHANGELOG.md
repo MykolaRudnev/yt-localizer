@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### UI redesign
+
+- One design system for every surface: `--ytl-*` tokens (primitive → semantic → component) in `extension/src/ui/tokens.css`, shared components, inline icons; blue accent, no green; light/dark (Studio theme in the modal, OS theme in popup/options). Documented in [design.md](design.md); `tokens.test.ts` keeps component CSS free of raw values.
+- Studio modal: sticky toolbar and footer; review table with *All / Needs review / Ready* filter, language search and status badges (ready, cached, needs review, auto-approved, published, error); **Publish N ready (M need review)** stays visible.
+- Floating widget, popup and options rebuilt on the shared components; options grouped into sections with a sticky **Save** bar.
+- README screenshots are now captured from the real UI on demo data (`npm run screenshots`).
+
 ### Features
 
 - **Auto-approve review items** (default OFF): Options → Global translation options, plus an **Auto-approve shortened titles** toggle in the Studio modal (picker, progress, preview). When ON, rows that would need review are approved with the fitted title, so **Publish** and background **auto-publish** include them immediately; rows show an *auto-approved* badge and the progress header, preview, popup and job log report **N auto-approved**. Titles still over 100 chars are never auto-approved; turning the option OFF mid-session sends unpublished auto-approved rows back to review. With the option OFF, behaviour is unchanged.
@@ -11,6 +18,11 @@ All notable changes to this project are documented in this file.
 - `npm run typecheck` script (also run in CI).
 
 ### Fixes
+
+- Translations slowed down and stalled as the translation cache grew: the whole cache lived in one `chrome.storage.local` key (10 MB cap) and was rewritten for every language. It is now stored per video (migrated automatically) and the extension requests `unlimitedStorage`.
+- A full storage was reported as an engine quota error, marking working Gemini models as exhausted and re-translating the same language; it now stops with **Extension storage is full**.
+- The **Auto-approve** toggle could collapse the modal into the widget when the background failed; it now reverts and explains the error.
+- Progress kept updating only if the storage write succeeded; the UI is now notified first.
 
 - `npm run build` works on Windows (the build script no longer uses POSIX `VAR=value` env syntax; `vite build --mode <target>`).
 - Typecheck errors (`DOM.Iterable` lib missing; untyped `'job' in res` check in the preview).

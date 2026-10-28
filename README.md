@@ -8,28 +8,29 @@
 
 Chrome MV3 extension (+ optional CLI) that adds an **Auto Titles & Description** control on YouTube Studio video pages, translates with DeepL / Gemini / LibreTranslate, lets you preview, then publishes via the official **YouTube Data API v3**.
 
-![Language picker](docs/screenshots/modal-languages.png)
+![Language picker](docs/screenshots/language-picker.png)
 
 ## Features
 
 - **One-click Studio flow** — pick **Top 10**, **Top 20**, **Top 10 RPM**, **Top 20 RPM**, or a custom language set
 - **Engines** — DeepL Free (primary), Gemini free-tier fallback (model auto-pick + quota cascading), LibreTranslate (self-hosted)
-- **Preview before publish** — edit titles/descriptions in a table; dry-run ON by default
+- **Review before publish** — edit titles/descriptions inline; filter rows by *All / Needs review / Ready* or language code; one sticky **Publish N ready (M need review)** button; dry-run ON by default
 - **Reviewable title shortening** — segment-aware fit to YouTube’s 100-char limit; shortened rows need one-click Approve (or edit) before publish
 - **Optional auto-approve** — accept fitted titles automatically (Options or modal toggle, default off); rows get an *auto-approved* badge
 - **Opt-in auto-publish** — or explicit Publish after preview (shortened titles never auto-publish)
-- **Background jobs** — progress modal, minimized Studio widget, toolbar popup status
-- **Translation cache** — closing the modal mid-job does not throw work away
+- **Background jobs** — progress modal with per-language status badges, minimized Studio widget, toolbar popup status
+- **Translation cache** — stored per video, so closing the modal mid-job does not throw work away and large caches stay fast; Options shows stats and **Clear**
+- **Clean, accessible UI** — one blue design system for Studio modal, widget, popup and options; keyboard navigation and visible focus; light/dark follows Studio (modal) or your OS (popup/options)
 - **Multi-channel / multi-account** — per-channel OAuth tokens and language settings
 - **Optional CLI** — same pipeline from the terminal
 
-| Languages | Progress | Preview |
-|-----------|----------|---------|
-| ![languages](docs/screenshots/modal-languages.png) | ![translating](docs/screenshots/translating.png) | ![preview](docs/screenshots/preview.png) |
+| Language picker | Progress | Review |
+|-----------------|----------|--------|
+| ![Language picker](docs/screenshots/language-picker.png) | ![Progress](docs/screenshots/progress.png) | ![Review](docs/screenshots/review.png) |
 
-| Review shortened | Widget | Popup | Options |
+| Shortened titles | Widget | Popup | Options |
 |------------------|--------|-------|---------|
-| ![review](docs/screenshots/review-shortened.png) | ![widget](docs/screenshots/widget.png) | ![popup](docs/screenshots/popup.png) | ![options](docs/screenshots/options.png) |
+| ![Shortened titles](docs/screenshots/shortened-titles.png) | ![Widget](docs/screenshots/job-widget.png) | ![Popup](docs/screenshots/toolbar-popup.png) | ![Options](docs/screenshots/options-page.png) |
 
 ## Why
 
@@ -49,7 +50,7 @@ npm run build
 2. Chrome → `chrome://extensions` → Developer mode → **Load unpacked** → `extension/dist`.
 3. Options: paste **OAuth Client ID** + at least one translation key.
 4. Popup → **Add channel** (account must be an OAuth test user).
-5. Open a Studio video → **Auto Titles & Description** → translate with dry-run → preview → Publish.
+5. Open a Studio video → **Auto Titles & Description** → translate with dry-run → review → Publish.
 
 More detail: [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) · [docs/CLI.md](./docs/CLI.md)
 
@@ -63,7 +64,7 @@ flowchart LR
   D --> E[DeepL Free]
   D --> F[Gemini]
   D --> G[LibreTranslate]
-  C --> H[Preview table]
+  C --> H[Review table]
   H --> I[YouTube Data API v3<br/>videos.update localizations]
 ```
 
@@ -101,6 +102,8 @@ A Top 10 batch is usually well within a default YouTube day quota; large “all 
 | Gemini JSON mode errors | Extension retries without JSON mode; leave model on auto or pick a current flash model. |
 | DeepL unsupported language | Falls back to Gemini when a Gemini key is set; see job notes. |
 | “Receiving end does not exist” | Refresh the Studio tab so the content script reinjects, then reopen the popup / modal. |
+| Old UI still shows after updating | Reload the extension in `chrome://extensions`, then refresh the Studio tab (F5) — an open tab keeps the previous content script. |
+| “Extension storage is full” | Options → **Clear translation cache**, then **Retry** the remaining languages. |
 | Publish disabled | Dry-run is ON (default). Turn it off in Options, popup, or the modal when ready. |
 
 ## Roadmap
@@ -117,7 +120,8 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 |------|---------|
 | `extension/` | MV3 source (Vite → `extension/dist`) |
 | `extension/src/background/` | Service worker modules (message handlers, job store, translate run, publish) |
-| `extension/src/content/` | Studio UI (session controller, picker, progress / preview / result views, widget) |
+| `extension/src/content/` | Studio UI (session controller, picker, progress / review / result views, widget) |
+| `extension/src/ui/` | Design system: tokens, shared components, icons — documented in [design.md](./design.md) |
 | `extension/dev/` | Screenshot harness: real views + fake `chrome` APIs with demo data |
 | `shared/` | Engines, title fitting, pipeline, job state (extension + CLI) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `cli/` | Optional `yt-localizer` CLI |
@@ -132,7 +136,7 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 | `npm run build` | Build extension + CLI |
 | `npm run typecheck` | `tsc --noEmit` for extension/shared and CLI |
 | `npm test` | Vitest |
-| `npm run screenshots` | Capture `docs/screenshots/*.png` from the mock harness |
+| `npm run screenshots` | Capture `docs/screenshots/*.png` from the real UI on demo data |
 | `npm run yt-localizer` | Run the CLI |
 
 ```bash

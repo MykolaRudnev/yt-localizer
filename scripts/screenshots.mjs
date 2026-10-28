@@ -18,16 +18,22 @@ const outDir = join(root, 'docs/screenshots');
 const MARGIN = 20;
 
 const shots = [
-  { page: 'studio', hash: 'picker', file: 'modal-languages.png', target: '.vt-panel' },
-  { page: 'studio', hash: 'progress', file: 'translating.png', target: '.vt-panel' },
-  { page: 'studio', hash: 'preview', file: 'preview.png', target: '.vt-panel' },
-  { page: 'studio', hash: 'review', file: 'review-shortened.png', target: '.vt-panel' },
-  { page: 'studio', hash: 'widget', file: 'widget.png', target: '#vt-job-widget' },
-  { page: 'popup', file: 'popup.png', target: '.popup', viewport: { width: 360, height: 900 }, margin: 0 },
-  { page: 'options', file: 'options.png', target: '.wrap', viewport: { width: 1100, height: 1400 } },
+  { page: 'studio', hash: 'picker', file: 'language-picker.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'progress', file: 'progress.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'preview', file: 'review.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'review', file: 'shortened-titles.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'widget', file: 'job-widget.png', target: '#vt-job-widget' },
+  { page: 'popup', file: 'toolbar-popup.png', target: '.popup', viewport: { width: 360, height: 900 }, margin: 0 },
+  { page: 'options', file: 'options-page.png', target: '.wrap', viewport: { width: 1100, height: 1400 } },
 ];
 
-const obsolete = ['modal.png'];
+const obsolete = [
+  'modal.png',
+  // Pre-redesign names (renamed so GitHub's image cache can't serve the old shots).
+  ...['modal-languages', 'translating', 'preview', 'review-shortened', 'widget', 'popup', 'options'].map(
+    (n) => `${n}.png`,
+  ),
+];
 
 async function bundle(tmp) {
   const common = {
