@@ -1,35 +1,81 @@
 /**
- * Capture docs/screenshots/*.png from extension/dev/mock.html.
- * Uses Playwright + system Google Chrome. Fake demo data only — no network APIs.
- * Crops each shot to the UI surface with a small margin (no filename labels).
+ * Capture docs/screenshots/*.png from the real UI.
+ * Bundles extension/dev/shot-*.ts (real views + fake chrome APIs with demo data,
+ * see extension/dev/fake-chrome.ts) with esbuild, opens them in Playwright and
+ * crops each shot to its surface. Fake demo data only — no network APIs.
  */
+import { build } from 'esbuild';
 import { chromium } from 'playwright';
-import { mkdir, access, unlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
-const mockPath = join(root, 'extension/dev/mock.html');
+const ext = join(root, 'extension');
 const outDir = join(root, 'docs/screenshots');
 const MARGIN = 20;
 
 const shots = [
-  { id: 'shot-modal-languages', file: 'modal-languages.png', target: '.vt-panel' },
-  { id: 'shot-translating', file: 'translating.png', target: '.vt-panel' },
-  { id: 'shot-preview', file: 'preview.png', target: '.vt-panel' },
-  { id: 'shot-review-shortened', file: 'review-shortened.png', target: '.vt-panel' },
-  { id: 'shot-widget', file: 'widget.png', target: '.studio-bg' },
-  { id: 'shot-popup', file: 'popup.png', target: '.popup' },
-  { id: 'shot-options', file: 'options.png', target: '.options-wrap' },
+  { page: 'studio', hash: 'picker', file: 'modal-languages.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'progress', file: 'translating.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'preview', file: 'preview.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'review', file: 'review-shortened.png', target: '.vt-panel' },
+  { page: 'studio', hash: 'widget', file: 'widget.png', target: '#vt-job-widget' },
+  { page: 'popup', file: 'popup.png', target: '.popup', viewport: { width: 360, height: 900 }, margin: 0 },
+  { page: 'options', file: 'options.png', target: '.wrap', viewport: { width: 1100, height: 1400 } },
 ];
 
 const obsolete = ['modal.png'];
 
-async function screenshotWithMargin(page, locator, path, margin = MARGIN) {
+async function bundle(tmp) {
+  const common = {
+    bundle: true,
+    logLevel: 'warning',
+    alias: { '@shared': join(root, 'shared/src') },
+    loader: { '.json': 'json' },
+  };
+  await build({
+    ...common,
+    entryPoints: {
+      studio: join(ext, 'dev/shot-studio.ts'),
+      popup: join(ext, 'dev/shot-popup.ts'),
+      options: join(ext, 'dev/shot-options.ts'),
+    },
+    format: 'iife',
+    outdir: tmp,
+  });
+  await build({
+    ...common,
+    entryPoints: {
+      'studio-css': join(ext, 'src/content.css'),
+      'popup-css': join(ext, 'src/popup.css'),
+      'options-css': join(ext, 'src/options.css'),
+    },
+    outdir: tmp,
+  });
+
+  // Studio: an empty light page standing in for YouTube Studio.
+  await writeFile(
+    join(tmp, 'studio.html'),
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="studio-css.css">
+<style>body{margin:0;min-height:100vh;background:#f9f9f9;font-family:Roboto,Arial,sans-serif}</style></head>
+<body><script src="studio.js"></script></body></html>`,
+  );
+  // Popup / options: the real HTML with the dev bundles swapped in.
+  for (const name of ['popup', 'options']) {
+    const html = (await readFile(join(ext, `${name}.html`), 'utf8'))
+      .replace(/<link rel="stylesheet" href="\/src\/[\w.]+\.css" \/>/, `<link rel="stylesheet" href="${name}-css.css" />`)
+      .replace(/<script type="module" src="\/src\/[\w.]+\.ts"><\/script>/, `<script src="${name}.js"></script>`);
+    await writeFile(join(tmp, `${name}.html`), html);
+  }
+}
+
+async function screenshotWithMargin(page, locator, path, margin) {
   const box = await locator.boundingBox();
   if (!box) throw new Error(`No bounding box for ${path}`);
-  const vp = page.viewportSize() ?? { width: 1440, height: 900 };
+  const vp = page.viewportSize();
   const x = Math.max(0, box.x - margin);
   const y = Math.max(0, box.y - margin);
   const width = Math.min(vp.width - x, box.width + margin * 2);
@@ -37,42 +83,54 @@ async function screenshotWithMargin(page, locator, path, margin = MARGIN) {
   await page.screenshot({ path, clip: { x, y, width, height } });
 }
 
+async function launch() {
+  // Prefer the system Chrome; fall back to Playwright's bundled Chromium.
+  const executablePath = process.env.CHROME_PATH;
+  if (executablePath) return chromium.launch({ executablePath });
+  try {
+    return await chromium.launch({ channel: 'chrome' });
+  } catch {
+    return chromium.launch();
+  }
+}
+
 async function main() {
   await mkdir(outDir, { recursive: true });
-  await access(mockPath);
-
-  const browser = await chromium.launch({
-    executablePath: '/usr/bin/google-chrome',
-    args: ['--disable-dev-shm-usage'],
-  });
-  const page = await browser.newPage({
-    viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 2,
-  });
-
-  await page.goto(pathToFileURL(mockPath).href, { waitUntil: 'domcontentloaded' });
-
-  for (const shot of shots) {
-    const section = page.locator(`#${shot.id}`);
-    await section.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(80);
-    const target = section.locator(shot.target).first();
-    const out = join(outDir, shot.file);
-    await screenshotWithMargin(page, target, out);
-    console.log('wrote', out);
+  const tmp = await mkdtemp(join(tmpdir(), 'ytl-shots-'));
+  try {
+    await bundle(tmp);
+    const browser = await launch();
+    for (const shot of shots) {
+      const page = await browser.newPage({
+        viewport: shot.viewport ?? { width: 1440, height: 900 },
+        deviceScaleFactor: 2,
+        colorScheme: 'light',
+      });
+      const errors = [];
+      page.on('pageerror', (err) => errors.push(err.message));
+      const url = pathToFileURL(join(tmp, `${shot.page}.html`)).href + (shot.hash ? `#${shot.hash}` : '');
+      await page.goto(url, { waitUntil: 'load' });
+      if (shot.page === 'studio') await page.waitForSelector('html[data-ready]');
+      await page.waitForTimeout(300);
+      if (errors.length) throw new Error(`${shot.file}: ${errors.join('; ')}`);
+      const out = join(outDir, shot.file);
+      await screenshotWithMargin(page, page.locator(shot.target).first(), out, shot.margin ?? MARGIN);
+      console.log('wrote', out);
+      await page.close();
+    }
+    await browser.close();
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
   }
 
   for (const name of obsolete) {
-    const p = join(outDir, name);
     try {
-      await unlink(p);
-      console.log('removed obsolete', p);
+      await unlink(join(outDir, name));
+      console.log('removed obsolete', name);
     } catch {
       /* absent */
     }
   }
-
-  await browser.close();
 }
 
 main().catch((err) => {

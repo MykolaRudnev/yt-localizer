@@ -16,5 +16,5 @@
       "@shared/*": ["shared/src/*"]
     }
   },
-  "include": ["shared/**/*", "extension/src/**/*", "cli/src/**/*", "**/*.test.ts"]
+  "include": ["shared/**/*", "extension/src/**/*", "extension/dev/**/*", "cli/src/**/*", "**/*.test.ts"]
 }

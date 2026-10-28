@@ -118,7 +118,7 @@ Contributions welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 | `extension/` | MV3 source (Vite → `extension/dist`) |
 | `extension/src/background/` | Service worker modules (message handlers, job store, translate run, publish) |
 | `extension/src/content/` | Studio UI (session controller, picker, progress / preview / result views, widget) |
-| `extension/dev/` | Mock harness for screenshots |
+| `extension/dev/` | Screenshot harness: real views + fake `chrome` APIs with demo data |
 | `shared/` | Engines, title fitting, pipeline, job state (extension + CLI) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `cli/` | Optional `yt-localizer` CLI |
 | `languages.json` | Language list + presets |
