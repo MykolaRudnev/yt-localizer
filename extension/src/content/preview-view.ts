@@ -12,11 +12,13 @@ import { charWarning, titleRemovalDiff, YT_DESCRIPTION_MAX, YT_TITLE_MAX } from 
 import type { LocalizationResult } from '@shared/types';
 import type { JobResponse, PublishResponse } from '../protocol';
 import { escapeAttr, escapeHtml } from '../ui/html';
+import { icon } from '../ui/icons';
 import type { JobUiActions } from './actions';
 import { confirmAutoPublish, sendMsg, setAutoApprove } from './api';
-import { $req, bindModalChrome, ensureModalRoot, modalMode } from './dom';
+import { $req, bindModalChrome, ensureModalRoot, modalMode, panelHeadHtml } from './dom';
 import { AUTO_APPROVE_HINT, AUTO_APPROVE_LABEL } from './labels';
 import { showResultPanel, syncResultPanel } from './result-view';
+import { langRowState, type RowState, statusBadge } from './status';
 
 /**
  * Editable preview of finished translations + Publish.
@@ -33,7 +35,12 @@ type PreviewState = {
   autoPublish: boolean;
   /** Unsaved description edits by language (descriptions are not stored in the job). */
   descriptionDrafts: Map<string, string>;
+  /** Toolbar row filter and search (kept across repaints). */
+  filter: RowFilter;
+  query: string;
 };
+
+type RowFilter = 'all' | 'review' | 'ready';
 
 let state: PreviewState | null = null;
 /** Latest job snapshot for event handlers (updated on every render/patch). */
@@ -46,6 +53,8 @@ function stateFor(job: TranslateJob): PreviewState {
       dryRun: job.dryRun,
       autoPublish: job.autoPublish === true,
       descriptionDrafts: new Map(),
+      filter: 'all',
+      query: '',
     };
   }
   return state;
@@ -72,12 +81,8 @@ export function renderPreview(job: TranslateJob, actions: JobUiActions): void {
   paintPreview(root, job, st, actions);
 }
 
-function rowLanguageBadge(job: TranslateJob, language: string): string {
-  const s = job.langStates[language];
-  if (s?.published) return ' · live';
-  if (s?.status === 'needs_review') return ' · needs review';
-  if (s?.cached) return ' · cached';
-  return '';
+function rowStateFor(job: TranslateJob, language: string): RowState {
+  return langRowState(job.langStates[language]);
 }
 
 function diffHtml(fullTitle: string, fittedTitle: string): string {
@@ -92,61 +97,118 @@ function rowHtml(r: LocalizationResult, i: number, job: TranslateJob, st: Previe
   const description = st.descriptionDrafts.get(r.language) ?? s?.description ?? r.description;
   const fullTitle = s?.fullTitle ?? r.fullTitle ?? title;
   const shortened = !!(s?.shortened ?? r.shortened);
-  const needsReview = s?.status === 'needs_review';
+  const rowState = rowStateFor(job, r.language);
   const w = charWarning(title, description);
   const removedChars = Math.max(0, fullTitle.length - title.length);
   const lang = escapeAttr(r.language);
   const shortenBadge = shortened
-    ? `<span class="vt-shortened-badge">shortened −${removedChars} chars</span>`
-    : '';
-  const autoBadge = `<span class="vt-auto-approved-badge" title="Approved automatically (Auto-approve is ON)"${
-    s?.autoApproved && s.status === 'ok' ? '' : ' hidden'
-  }>auto-approved</span>`;
+    ? `<span class="ytl-badge" title="Fitted to the ${YT_TITLE_MAX}-character YouTube limit">Shortened −${removedChars}</span>`
+    : '<span></span>';
   const expander = shortened
     ? `<details class="vt-shorten-details">
         <summary>Show full translation</summary>
         <div class="vt-full-diff">${diffHtml(fullTitle, s?.autoTitle ?? title)}</div>
         <div class="vt-review-actions">
-          <button type="button" class="vt-approve" data-lang="${lang}">Approve</button>
-          <button type="button" class="vt-use-full" data-lang="${lang}">Use full</button>
-          <button type="button" class="vt-reset" data-lang="${lang}">Reset</button>
+          <button type="button" class="ytl-btn vt-approve" data-lang="${lang}">${icon('check')}Approve</button>
+          <button type="button" class="ytl-btn ytl-btn--ghost vt-use-full" data-lang="${lang}">Use full</button>
+          <button type="button" class="ytl-btn ytl-btn--ghost vt-reset" data-lang="${lang}">Reset</button>
         </div>
       </details>`
     : '';
-  const counterClass = title.length > YT_TITLE_MAX ? 'vt-counter vt-counter-over' : 'vt-counter';
-  return `<tr data-i="${i}" data-lang="${lang}" class="${needsReview ? 'vt-needs-review' : ''}">
-      <td>${escapeHtml(r.language)}<span class="vt-row-badge">${escapeHtml(rowLanguageBadge(job, r.language))}</span></td>
+  const titleOver = title.length > YT_TITLE_MAX;
+  const counterClass = titleOver ? 'vt-counter vt-counter-over' : 'vt-counter';
+  return `<tr data-i="${i}" data-lang="${lang}" data-state="${rowState}">
       <td>
-        ${shortenBadge}
-        ${autoBadge}
-        <input class="vt-title" value="${escapeAttr(title)}" maxlength="${
-          // Allow Use full to exceed; maxlength only when not forcing full
-          title.length > YT_TITLE_MAX ? 500 : YT_TITLE_MAX
-        }" />
-        <div class="${counterClass}">${title.length}/${YT_TITLE_MAX}</div>
-        ${expander}
-        <div class="warn vt-title-warn" style="display:${
-          w.titleOver ? 'block' : 'none'
-        }">Title &gt; ${YT_TITLE_MAX} (${title.length})</div>
+        <div class="vt-cell-lang">
+          <span class="vt-row-code">${escapeHtml(r.language)}</span>
+          <span class="vt-row-badge">${statusBadge(rowState)}</span>
+        </div>
       </td>
       <td>
-        <textarea class="vt-desc" rows="4">${escapeHtml(description)}</textarea>
-        <div class="warn vt-desc-warn" style="display:${
-          w.descOver ? 'block' : 'none'
-        }">Description &gt; ${YT_DESCRIPTION_MAX} (${description.length})</div>
+        <div class="vt-cell-stack">
+          <input class="ytl-input vt-title" aria-label="Title (${lang})" value="${escapeAttr(title)}" maxlength="${
+            // Allow Use full to exceed; maxlength only when not forcing full
+            titleOver ? 500 : YT_TITLE_MAX
+          }"${titleOver ? ' aria-invalid="true"' : ''} />
+          <div class="vt-cell-meta">
+            ${shortenBadge}
+            <span class="${counterClass}">${title.length}/${YT_TITLE_MAX}</span>
+          </div>
+          <div class="vt-field-warn vt-title-warn" role="alert" ${w.titleOver ? '' : 'hidden'}>${icon('error', { small: true })}<span>Title &gt; ${YT_TITLE_MAX} (${title.length}) — not published until shortened</span></div>
+          ${expander}
+        </div>
+      </td>
+      <td>
+        <div class="vt-cell-stack">
+          <textarea class="ytl-textarea vt-desc" rows="3" aria-label="Description (${lang})">${escapeHtml(description)}</textarea>
+          <div class="vt-field-warn vt-desc-warn" role="alert" ${w.descOver ? '' : 'hidden'}>${icon('error', { small: true })}<span>Description &gt; ${YT_DESCRIPTION_MAX} (${description.length})</span></div>
+        </div>
       </td>
     </tr>`;
 }
 
 function autoPublishBannerText(job: TranslateJob): string {
   return job.autoApprove
-    ? 'Auto-publish ON — ready rows go live as they finish (shortened titles are auto-approved)'
-    : 'Auto-publish ON — ready rows go live as they finish (shortened titles wait for review)';
+    ? 'Auto-publish is on — ready rows go live as they finish (shortened titles are auto-approved).'
+    : 'Auto-publish is on — ready rows go live as they finish (shortened titles wait for review).';
 }
 
 function summaryText(job: TranslateJob): string {
   const auto = autoApprovedSummary(jobAutoApproved(job).length);
-  return auto ? ` · ${auto}` : '';
+  return auto ? `(${auto})` : '';
+}
+
+function footerSummaryHtml(job: TranslateJob, st: PreviewState): string {
+  const counts = jobPublishCounts(job);
+  if (st.dryRun) return 'Dry-run — nothing will be published';
+  const parts = [`<strong>${counts.ready}</strong> ready`];
+  if (counts.needReview) parts.push(`<strong>${counts.needReview}</strong> need review`);
+  if (counts.autoApproved) parts.push(`${counts.autoApproved} auto-approved`);
+  return parts.join(' · ');
+}
+
+function filterCounts(job: TranslateJob): Record<RowFilter, number> {
+  const rows = jobPreviewRows(job);
+  let review = 0;
+  let ready = 0;
+  for (const r of rows) {
+    const st = rowStateFor(job, r.language);
+    if (st === 'review') review++;
+    else if (st === 'ready' || st === 'cached' || st === 'auto') ready++;
+  }
+  return { all: rows.length, review, ready };
+}
+
+function rowMatches(tr: HTMLElement, st: PreviewState): boolean {
+  const state = tr.dataset.state as RowState;
+  if (st.filter === 'review' && state !== 'review') return false;
+  if (st.filter === 'ready' && !(state === 'ready' || state === 'cached' || state === 'auto')) {
+    return false;
+  }
+  return !st.query || (tr.dataset.lang ?? '').toLowerCase().includes(st.query);
+}
+
+/** Apply the toolbar filter/search to the rows and refresh the filter counts. */
+function applyRowFilter(root: HTMLElement, job: TranslateJob, st: PreviewState): void {
+  let shown = 0;
+  for (const tr of root.querySelectorAll<HTMLElement>('tr[data-lang]')) {
+    // Keep the row being edited visible even if its state no longer matches.
+    const keep = tr.contains(document.activeElement);
+    tr.hidden = !(keep || rowMatches(tr, st));
+    if (!tr.hidden) shown++;
+  }
+  const empty = root.querySelector<HTMLElement>('#vt-rows-empty');
+  if (empty) empty.hidden = shown > 0 || !root.querySelector('tr[data-lang]');
+  const counts = filterCounts(job);
+  root.querySelectorAll<HTMLElement>('[data-filter-count]').forEach((el) => {
+    el.textContent = String(counts[el.dataset.filterCount as RowFilter]);
+  });
+}
+
+function filterItem(st: PreviewState, value: RowFilter, label: string): string {
+  return `<label class="ytl-segmented__item"><input type="radio" class="ytl-visually-hidden" name="vt-row-filter" value="${value}" ${
+    st.filter === value ? 'checked' : ''
+  }/>${label} <span class="ytl-segmented__count" data-filter-count="${value}"></span></label>`;
 }
 
 function paintPreview(
@@ -169,56 +231,97 @@ function paintPreview(
   root.dataset.mode = 'preview';
   root.dataset.jobId = job.id;
   root.dataset.rows = rowKey(job);
+  const publishDisabled = st.dryRun || counts.ready === 0;
+  const source = (job.sourceTitle ?? '').slice(0, 90);
   root.innerHTML = `
-    <div class="vt-panel vt-job" role="dialog" aria-modal="true" aria-labelledby="vt-title">
-      <div class="vt-panel-head">
-        <h2 id="vt-title">Preview translations</h2>
-        <div class="vt-head-actions">
-          <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
+    <div class="vt-panel vt-panel--lg" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+      ${panelHeadHtml({
+        title: 'Review translations',
+        subtitle: source ? `${source} · ${job.videoId}` : job.videoId,
+      })}
+      <div class="vt-notices">
+        <div class="ytl-notice ytl-notice--warning" id="vt-dry-banner" ${st.dryRun ? '' : 'hidden'}>
+          ${icon('alert')}
+          <span>Dry-run is on — Publish is disabled. Turn Dry-run off in the toolbar to publish.</span>
         </div>
-      </div>
-      <div class="vt-banner vt-banner-dry" id="vt-dry-banner" style="display:${st.dryRun ? 'block' : 'none'}">
-        Dry-run ON — Publish disabled. Uncheck below to enable publishing.
-      </div>
-      <div class="vt-banner vt-banner-live" id="vt-auto-banner" style="display:${
-        st.autoPublish && !st.dryRun ? 'block' : 'none'
-      }">${escapeHtml(autoPublishBannerText(job))}</div>
-      ${stopNote ? `<div class="vt-banner vt-banner-err">${escapeHtml(stopNote)}</div>` : ''}
-      <div class="vt-meta">
-        Video: ${escapeHtml(job.videoId)} · Source: ${escapeHtml((job.sourceTitle ?? '').slice(0, 80))}<span id="vt-auto-summary">${escapeHtml(summaryText(job))}</span>
-        ${failedNote ? `<br/>${escapeHtml(failedNote)}` : ''}
-      </div>
-      <label class="vt-check vt-dry-inline">
-        <input type="checkbox" id="vt-dry-preview" ${st.dryRun ? 'checked' : ''}/> Dry-run (preview only)
-      </label>
-      <label class="vt-check vt-dry-inline">
-        <input type="checkbox" id="vt-auto-preview" ${st.autoPublish ? 'checked' : ''}/> Auto-publish
-      </label>
-      <label class="vt-check vt-dry-inline" title="${escapeAttr(AUTO_APPROVE_HINT)}">
-        <input type="checkbox" id="vt-autoapprove-preview" ${job.autoApprove ? 'checked' : ''}/> ${AUTO_APPROVE_LABEL}
-      </label>
-      <div class="vt-table-wrap">
-        <table>
-          <thead><tr><th>Language</th><th>Title</th><th>Description</th></tr></thead>
-          <tbody>${rows.map((r, i) => rowHtml(r, i, job, st)).join('') || '<tr><td colspan="3">No translations</td></tr>'}</tbody>
-        </table>
-      </div>
-      <div class="vt-footer sticky">
-        <button type="button" id="vt-new">New session</button>
+        <div class="ytl-notice" id="vt-auto-banner" ${st.autoPublish && !st.dryRun ? '' : 'hidden'}>
+          ${icon('info')}
+          <span id="vt-auto-banner-text">${escapeHtml(autoPublishBannerText(job))}</span>
+        </div>
         ${
-          failed.length
-            ? `<button type="button" id="vt-retry-failed">Retry ${failed.length} failed</button>`
+          stopNote
+            ? `<div class="ytl-notice ytl-notice--error" role="alert">${icon('error')}<span>${escapeHtml(stopNote)}</span></div>`
             : ''
         }
-        <button type="button" ${
-          st.dryRun || counts.ready === 0 ? 'class="primary"' : ''
-        } id="vt-minimize">Close</button>
-        <button type="button" class="primary" id="vt-publish" ${
-          st.dryRun || counts.ready === 0 ? 'disabled' : ''
-        }>${escapeHtml(publishButtonLabel(counts))}</button>
+        ${
+          failedNote
+            ? `<div class="ytl-notice ytl-notice--error">${icon('error')}<span>${escapeHtml(failedNote)}</span></div>`
+            : ''
+        }
       </div>
+      <div class="vt-toolbar" role="toolbar" aria-label="Review options">
+        <div class="vt-toolbar-row">
+          <label class="ytl-search">
+            ${icon('search')}
+            <span class="ytl-visually-hidden">Filter by language code</span>
+            <input type="search" id="vt-row-search" class="ytl-input" placeholder="Filter by language code…" autocomplete="off" value="${escapeAttr(st.query)}" />
+          </label>
+          <div class="ytl-segmented" role="radiogroup" aria-label="Show rows">
+            ${filterItem(st, 'all', 'All')}
+            ${filterItem(st, 'review', 'Needs review')}
+            ${filterItem(st, 'ready', 'Ready')}
+          </div>
+        </div>
+        <div class="vt-toolbar-row">
+          <label class="ytl-toggle ytl-toggle--compact">
+            <input type="checkbox" role="switch" class="ytl-switch" id="vt-dry-preview" ${st.dryRun ? 'checked' : ''}/>
+            <span>Dry-run</span>
+          </label>
+          <label class="ytl-toggle ytl-toggle--compact">
+            <input type="checkbox" role="switch" class="ytl-switch" id="vt-auto-preview" ${st.autoPublish ? 'checked' : ''}/>
+            <span>Auto-publish</span>
+          </label>
+          <label class="ytl-toggle ytl-toggle--compact" title="${escapeAttr(AUTO_APPROVE_HINT)}">
+            <input type="checkbox" role="switch" class="ytl-switch" id="vt-autoapprove-preview" ${job.autoApprove ? 'checked' : ''}/>
+            <span>${AUTO_APPROVE_LABEL} <span class="ytl-muted" id="vt-auto-summary">${escapeHtml(summaryText(job))}</span></span>
+          </label>
+        </div>
+      </div>
+      <div class="vt-body vt-body--flush">
+        ${
+          rows.length
+            ? `<table class="vt-table">
+                <thead><tr><th scope="col">Language</th><th scope="col">Title</th><th scope="col">Description</th></tr></thead>
+                <tbody>${rows.map((r, i) => rowHtml(r, i, job, st)).join('')}</tbody>
+              </table>
+              <div class="vt-state" id="vt-rows-empty" hidden>
+                <span class="vt-state-title">No rows match</span>
+                <span>Clear the search or switch the filter to All.</span>
+              </div>`
+            : `<div class="vt-state">
+                <span class="vt-state-title">No translations to review</span>
+                <span>${failed.length ? 'Every language failed — retry them below.' : 'Nothing finished yet.'}</span>
+              </div>`
+        }
+      </div>
+      <footer class="vt-footer">
+        <div class="vt-footer-summary" id="vt-pub-summary" aria-live="polite">${footerSummaryHtml(job, st)}</div>
+        <div class="vt-footer-actions">
+          <button type="button" class="ytl-btn ytl-btn--ghost" id="vt-new">New session</button>
+          ${
+            failed.length
+              ? `<button type="button" class="ytl-btn" id="vt-retry-failed">Retry ${failed.length} failed</button>`
+              : ''
+          }
+          <button type="button" class="ytl-btn" id="vt-minimize">Close</button>
+          <button type="button" class="ytl-btn ytl-btn--primary ytl-btn--lg" id="vt-publish" ${
+            publishDisabled ? 'disabled' : ''
+          }${st.dryRun ? ' title="Dry-run is on"' : ''}>${escapeHtml(publishButtonLabel(counts))}</button>
+        </div>
+      </footer>
     </div>`;
 
+  applyRowFilter(root, job, st);
   wireRows(root, actions.applyJob);
   wirePreviewChrome(root, job, st, actions);
 }
@@ -229,11 +332,12 @@ function patchPreview(root: HTMLElement, job: TranslateJob, st: PreviewState): v
     const lang = tr.dataset.lang!;
     const s = job.langStates[lang];
     if (!s) continue;
-    tr.classList.toggle('vt-needs-review', s.status === 'needs_review');
-    const badge = tr.querySelector('.vt-row-badge');
-    if (badge) badge.textContent = rowLanguageBadge(job, lang);
-    const auto = tr.querySelector<HTMLElement>('.vt-auto-approved-badge');
-    if (auto) auto.hidden = !(s.autoApproved && s.status === 'ok');
+    const rowState = rowStateFor(job, lang);
+    if (tr.dataset.state !== rowState) {
+      tr.dataset.state = rowState;
+      const badge = tr.querySelector('.vt-row-badge');
+      if (badge) badge.innerHTML = statusBadge(rowState);
+    }
     const input = tr.querySelector<HTMLInputElement>('.vt-title');
     // Never overwrite the field the user is typing in.
     if (input && s.title != null && input.value !== s.title && document.activeElement !== input) {
@@ -243,10 +347,13 @@ function patchPreview(root: HTMLElement, job: TranslateJob, st: PreviewState): v
   }
   const autoApprove = root.querySelector<HTMLInputElement>('#vt-autoapprove-preview');
   if (autoApprove) autoApprove.checked = job.autoApprove === true;
-  const banner = root.querySelector('#vt-auto-banner');
+  const banner = root.querySelector('#vt-auto-banner-text');
   if (banner) banner.textContent = autoPublishBannerText(job);
   const summary = root.querySelector('#vt-auto-summary');
   if (summary) summary.textContent = summaryText(job);
+  const pubSummary = root.querySelector('#vt-pub-summary');
+  if (pubSummary) pubSummary.innerHTML = footerSummaryHtml(job, st);
+  applyRowFilter(root, job, st);
   syncPublishButton(root, job, st);
 }
 
@@ -272,10 +379,14 @@ function syncRowCounters(tr: Element) {
   // Allow paste/use-full over 100 by lifting maxlength
   titleInput.maxLength = len > YT_TITLE_MAX ? 500 : YT_TITLE_MAX;
   const w = charWarning(titleInput.value, descInput.value);
-  titleWarn.style.display = w.titleOver ? 'block' : 'none';
-  titleWarn.textContent = `Title > ${YT_TITLE_MAX} (${len})`;
-  descWarn.style.display = w.descOver ? 'block' : 'none';
-  descWarn.textContent = `Description > ${YT_DESCRIPTION_MAX} (${descInput.value.length})`;
+  titleWarn.hidden = !w.titleOver;
+  $req(titleWarn, 'span').textContent =
+    `Title > ${YT_TITLE_MAX} (${len}) — not published until shortened`;
+  titleInput.toggleAttribute('aria-invalid', w.titleOver);
+  descWarn.hidden = !w.descOver;
+  $req(descWarn, 'span').textContent =
+    `Description > ${YT_DESCRIPTION_MAX} (${descInput.value.length})`;
+  descInput.toggleAttribute('aria-invalid', w.descOver);
 }
 
 function wireRows(root: HTMLElement, onJob: (job: TranslateJob) => void) {
@@ -349,6 +460,7 @@ function wirePreviewChrome(
     if (!localizations.length) return;
     const pubBtn = $req<HTMLButtonElement>(root, '#vt-publish');
     pubBtn.disabled = true;
+    pubBtn.setAttribute('aria-busy', 'true');
     pubBtn.textContent = 'Publishing…';
     try {
       const res = await sendMsg<PublishResponse>({
@@ -420,6 +532,16 @@ function wirePreviewChrome(
       job.videoId,
       failed.map((f) => f.language),
     );
+  });
+  root.querySelector('#vt-row-search')?.addEventListener('input', (e) => {
+    st.query = (e.target as HTMLInputElement).value.toLowerCase().trim();
+    applyRowFilter(root, latestJob ?? job, st);
+  });
+  root.querySelectorAll<HTMLInputElement>('input[name="vt-row-filter"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      st.filter = el.value as RowFilter;
+      applyRowFilter(root, latestJob ?? job, st);
+    });
   });
   $req(root, '#vt-publish').addEventListener('click', () => void onPublish());
 }

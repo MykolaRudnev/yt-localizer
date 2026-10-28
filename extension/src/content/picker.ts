@@ -2,9 +2,10 @@ import { flagForLanguage } from '@shared/langs';
 import languagesData from '../../../languages.json';
 import type { StartTranslateResponse, VideoMetaResponse } from '../protocol';
 import { engineLabel, escapeAttr, escapeHtml } from '../ui/html';
+import { icon, SPINNER } from '../ui/icons';
 import type { PickerActions } from './actions';
 import { confirmAutoPublish, getSettings, sendMsg } from './api';
-import { $req, bindModalChrome, ensureModalRoot, removeModal } from './dom';
+import { $req, bindModalChrome, ensureModalRoot, panelHeadHtml, removeModal } from './dom';
 import { AUTO_APPROVE_HINT, AUTO_APPROVE_LABEL } from './labels';
 
 type LangFile = {
@@ -23,19 +24,24 @@ export function showConnectChannelModal(
   const root = ensureModalRoot('connect');
   const name = opts.channelTitle || opts.channelId || 'this channel';
   root.innerHTML = `
-    <div class="vt-panel vt-picker" role="dialog" aria-modal="true" aria-labelledby="vt-title">
-      <div class="vt-panel-head">
-        <h2 id="vt-title">Connect channel</h2>
-        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
+    <div class="vt-panel vt-panel--sm" role="dialog" aria-modal="true" aria-labelledby="vt-title">
+      ${panelHeadHtml({ title: 'Connect channel' })}
+      <div class="vt-body">
+        <div class="ytl-notice ytl-notice--warning" role="alert">
+          ${icon('alert')}
+          <div class="ytl-notice__body">
+            <span>This video belongs to <strong>${escapeHtml(name)}</strong>. Connect that channel to translate and publish its localizations.</span>
+            ${opts.error ? `<span class="ytl-notice__hint">${escapeHtml(opts.error)}</span>` : ''}
+          </div>
+        </div>
       </div>
-      <div class="vt-banner vt-banner-err">
-        This video belongs to <strong>${escapeHtml(name)}</strong>, connect it.
-      </div>
-      <div class="vt-meta">${escapeHtml(opts.error ?? '')}</div>
-      <div class="vt-footer">
-        <button type="button" id="vt-cancel">Cancel</button>
-        <button type="button" class="primary" id="vt-connect">Connect</button>
-      </div>
+      <footer class="vt-footer">
+        <div class="vt-footer-summary"></div>
+        <div class="vt-footer-actions">
+          <button type="button" class="ytl-btn" id="vt-cancel">Cancel</button>
+          <button type="button" class="ytl-btn ytl-btn--primary" id="vt-connect">Connect channel</button>
+        </div>
+      </footer>
     </div>`;
 
   bindModalChrome({ root, onClose: actions.close });
@@ -44,6 +50,7 @@ export function showConnectChannelModal(
   const connectBtn = $req<HTMLButtonElement>(root, '#vt-connect');
   connectBtn.addEventListener('click', async () => {
     connectBtn.disabled = true;
+    connectBtn.setAttribute('aria-busy', 'true');
     connectBtn.textContent = 'Connecting…';
     const res = await sendMsg<{ ok: boolean; error?: string }>({
       type: 'CONNECT_CHANNEL',
@@ -52,7 +59,8 @@ export function showConnectChannelModal(
     if (!res?.ok) {
       alert(res?.error ?? 'Connect failed');
       connectBtn.disabled = false;
-      connectBtn.textContent = 'Connect';
+      connectBtn.removeAttribute('aria-busy');
+      connectBtn.textContent = 'Connect channel';
       return;
     }
     removeModal();
@@ -65,12 +73,14 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
   removeModal();
   const root = ensureModalRoot('picker');
   root.innerHTML = `
-    <div class="vt-panel vt-picker" role="dialog" aria-modal="true" aria-labelledby="vt-title">
-      <div class="vt-panel-head">
-        <h2 id="vt-title">Auto Titles &amp; Description</h2>
-        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
+    <div class="vt-panel vt-panel--md" role="dialog" aria-modal="true" aria-labelledby="vt-title" aria-busy="true">
+      ${panelHeadHtml({ title: 'Auto Titles & Description' })}
+      <div class="vt-body">
+        <div class="vt-state" id="vt-picker-status" role="status">
+          ${SPINNER}
+          <span>Loading video localizations…</span>
+        </div>
       </div>
-      <div class="vt-meta" id="vt-picker-status">Loading video localizations…</div>
     </div>`;
 
   bindModalChrome({ root, onClose: actions.close });
@@ -102,6 +112,8 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
     let autoPublish = meta.channelSettings?.autoPublish === true;
     let autoApprove = settings.autoApproveReview === true;
     let searchQ = '';
+    /** Preset chip shown as pressed until the selection is edited by hand. */
+    let activePreset: string | null = null;
 
     const start = async () => {
       const langs = [...selected];
@@ -137,80 +149,101 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
     };
 
     const panel = $req(root, '.vt-panel');
+    panel.removeAttribute('aria-busy');
     const engineShown = engineLabel(settings.engine, settings.geminiModel || undefined);
+    const videoTitle = meta.title?.slice(0, 90) ?? videoId;
+    const subtitle = meta.defaultLanguage
+      ? `${videoTitle} · default language ${meta.defaultLanguage}`
+      : videoTitle;
+    const rpmHint = 'Estimate based on typical RPM markets';
+    const preset = (key: string, label: string, hint?: string) =>
+      `<button type="button" data-preset="${key}" class="ytl-chip" aria-pressed="false"${
+        hint ? ` title="${escapeAttr(hint)}"` : ''
+      }>${label}</button>`;
     panel.innerHTML = `
-      <div class="vt-panel-head">
-        <div>
-          <span class="vt-brand-mark">YT Localizer</span>
-          <h2 id="vt-title">Auto Titles &amp; Description</h2>
+      ${panelHeadHtml({ title: 'Auto Titles & Description', subtitle })}
+      <div class="vt-notices">
+        <div class="ytl-notice ytl-notice--warning" id="vt-dry-banner" ${dryRun ? '' : 'hidden'}>
+          ${icon('alert')}
+          <span>Dry-run is on — preview only. Publish stays disabled until you turn it off.</span>
         </div>
-        <button type="button" class="vt-icon-btn" id="vt-x" aria-label="Close">×</button>
-      </div>
-      <div class="vt-section vt-video-info" id="vt-video-info">
-        <div class="vt-section-label vt-section-label-inset">Video</div>
-        <div class="vt-video-title">${escapeHtml(meta.title?.slice(0, 90) ?? videoId)}</div>
-        <div class="vt-meta vt-meta-tight">
-          ${meta.defaultLanguage ? `Default language: ${escapeHtml(meta.defaultLanguage)}` : escapeHtml(videoId)}
+        <div class="ytl-notice" id="vt-auto-banner" ${autoPublish && !dryRun ? '' : 'hidden'}>
+          ${icon('info')}
+          <span>Auto-publish is on — translations go live on YouTube as they finish.</span>
         </div>
       </div>
-      <div class="vt-banner vt-banner-dry" id="vt-dry-banner" style="display:${dryRun ? 'block' : 'none'}">
-        Dry-run ON — preview only; Publish will stay disabled until you turn this off.
-      </div>
-      <div class="vt-banner vt-banner-live" id="vt-auto-banner" style="display:${
-        autoPublish && !dryRun ? 'block' : 'none'
-      }">
-        Auto-publish ON — translations go live as they finish
-      </div>
-      <div class="vt-section">
-        <div class="vt-section-label">Languages</div>
-        <div class="vt-chips" id="vt-presets">
-          <button type="button" data-preset="top10" class="vt-chip">Top 10</button>
-          <button type="button" data-preset="top20" class="vt-chip">Top 20</button>
-          <button type="button" data-preset="top10rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
-          <button type="button" data-preset="top20rpm" class="vt-chip" title="Estimate based on typical RPM markets">Top 20 RPM (estimate)</button>
-          <button type="button" data-preset="all" class="vt-chip">All</button>
-          <button type="button" data-preset="last" class="vt-chip">Last used</button>
+      <div class="vt-toolbar" role="toolbar" aria-label="Language selection">
+        <div class="vt-toolbar-row">
+          <label class="ytl-search">
+            ${icon('search')}
+            <span class="ytl-visually-hidden">Search languages</span>
+            <input type="search" id="vt-lang-search" class="ytl-input" placeholder="Search by name or code…" autocomplete="off" />
+          </label>
+          <span class="ytl-badge ytl-badge--accent" id="vt-sel-badge"></span>
         </div>
-        <input type="search" id="vt-lang-search" class="vt-search" placeholder="Search languages…" aria-label="Search languages" />
-        <div class="vt-lang-grid" id="vt-lang-grid"></div>
-      </div>
-      <div class="vt-picker-footer">
-        <span class="vt-count" id="vt-sel-count"></span>
-        <div class="vt-mode-row">
-          <label class="vt-radio"><input type="radio" name="vt-skip" value="skip" ${
-            skipExisting ? 'checked' : ''
-          }/> Skip existing</label>
-          <label class="vt-radio"><input type="radio" name="vt-skip" value="overwrite" ${
-            !skipExisting ? 'checked' : ''
-          }/> Overwrite</label>
+        <div class="vt-chips" id="vt-presets" role="group" aria-label="Presets">
+          ${preset('top10', 'Top 10')}
+          ${preset('top20', 'Top 20')}
+          ${preset('top10rpm', 'Top 10 RPM <span class="ytl-chip__hint">est.</span>', rpmHint)}
+          ${preset('top20rpm', 'Top 20 RPM <span class="ytl-chip__hint">est.</span>', rpmHint)}
+          ${preset('last', 'Last used')}
+          ${preset('all', 'All')}
         </div>
-        <label class="vt-check"><input type="checkbox" id="vt-dry" ${
-          dryRun ? 'checked' : ''
-        }/> Dry-run</label>
-        <label class="vt-check"><input type="checkbox" id="vt-auto" ${
-          autoPublish ? 'checked' : ''
-        }/> Auto-publish</label>
-        <label class="vt-check" title="${escapeAttr(AUTO_APPROVE_HINT)}"><input type="checkbox" id="vt-autoapprove" ${
-          autoApprove ? 'checked' : ''
-        }/> ${AUTO_APPROVE_LABEL}</label>
       </div>
-      <div class="vt-engine-row" id="vt-engine-row">
-        <span class="vt-engine-label">Engine</span>
-        <span class="vt-engine-value">${escapeHtml(engineShown || settings.engine)}</span>
+      <div class="vt-body">
+        <div class="vt-lang-grid" id="vt-lang-grid" role="group" aria-label="Languages"></div>
+        <div class="vt-state" id="vt-lang-empty" hidden>
+          <span class="vt-state-title">No languages match</span>
+          <span>Try a language name (e.g. “German”) or a code (e.g. “de”).</span>
+        </div>
       </div>
-      <div class="vt-footer">
-        <button type="button" id="vt-cancel">Cancel</button>
-        <button type="button" class="primary" id="vt-go">Translate</button>
-      </div>`;
+      <div class="vt-run-options">
+        <div class="vt-run-options-head">
+          <div class="ytl-segmented" role="radiogroup" aria-label="Existing localizations">
+            <label class="ytl-segmented__item" title="Leave languages that already have a localization untouched"><input type="radio" class="ytl-visually-hidden" name="vt-skip" value="skip" ${
+              skipExisting ? 'checked' : ''
+            }/>Skip existing</label>
+            <label class="ytl-segmented__item" title="Re-translate and replace existing localizations"><input type="radio" class="ytl-visually-hidden" name="vt-skip" value="overwrite" ${
+              !skipExisting ? 'checked' : ''
+            }/>Overwrite</label>
+          </div>
+          <span class="vt-engine" id="vt-engine-row">Engine <span class="ytl-code">${escapeHtml(
+            engineShown || settings.engine,
+          )}</span></span>
+        </div>
+        <label class="ytl-toggle">
+          <input type="checkbox" role="switch" class="ytl-switch" id="vt-dry" ${dryRun ? 'checked' : ''}/>
+          <span class="ytl-toggle__text">Dry-run<span class="ytl-toggle__hint">Preview only, nothing is published</span></span>
+        </label>
+        <label class="ytl-toggle">
+          <input type="checkbox" role="switch" class="ytl-switch" id="vt-auto" ${autoPublish ? 'checked' : ''}/>
+          <span class="ytl-toggle__text">Auto-publish<span class="ytl-toggle__hint">Go live in batches as rows finish</span></span>
+        </label>
+        <label class="ytl-toggle" title="${escapeAttr(AUTO_APPROVE_HINT)}">
+          <input type="checkbox" role="switch" class="ytl-switch" id="vt-autoapprove" ${autoApprove ? 'checked' : ''}/>
+          <span class="ytl-toggle__text">${AUTO_APPROVE_LABEL}<span class="ytl-toggle__hint">No manual review for titles fitted to 100 chars</span></span>
+        </label>
+      </div>
+      <footer class="vt-footer">
+        <div class="vt-footer-summary" id="vt-sel-count" aria-live="polite"></div>
+        <div class="vt-footer-actions">
+          <button type="button" class="ytl-btn" id="vt-cancel">Cancel</button>
+          <button type="button" class="ytl-btn ytl-btn--primary ytl-btn--lg" id="vt-go">Translate</button>
+        </div>
+      </footer>`;
 
     const grid = $req(panel, '#vt-lang-grid');
 
     const updateChrome = () => {
       const n = selected.size;
       const existingInSelection = [...selected].filter((c) => existing.has(c)).length;
-      $req(panel, '#vt-sel-count').textContent = `${n} selected${
+      $req(panel, '#vt-sel-count').innerHTML = `<strong>${n}</strong> selected${
         existingInSelection ? ` · ${existingInSelection} already localized` : ''
       }`;
+      $req(panel, '#vt-sel-badge').textContent = `${n} selected`;
+      panel.querySelectorAll<HTMLElement>('[data-preset]').forEach((chip) => {
+        chip.setAttribute('aria-pressed', String(chip.dataset.preset === activePreset));
+      });
       const goBtn = $req<HTMLButtonElement>(panel, '#vt-go');
       goBtn.disabled = !n;
       goBtn.textContent = `Translate ${n} language${n === 1 ? '' : 's'}`;
@@ -218,6 +251,7 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
 
     const fillGrid = () => {
       grid.innerHTML = '';
+      let shown = 0;
       for (const lang of data.languages) {
         if (
           searchQ &&
@@ -226,16 +260,19 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
         ) {
           continue;
         }
+        shown++;
         grid.append(languageItem(lang, selected.has(lang.code), existing.has(lang.code), (on) => {
           if (on) selected.add(lang.code);
           else selected.delete(lang.code);
+          activePreset = null;
           updateChrome();
         }));
       }
+      $req(panel, '#vt-lang-empty').hidden = shown > 0;
     };
 
     const syncAutoBanner = () => {
-      $req(panel, '#vt-auto-banner').style.display = autoPublish && !dryRun ? 'block' : 'none';
+      $req(panel, '#vt-auto-banner').hidden = !(autoPublish && !dryRun);
     };
 
     fillGrid();
@@ -253,6 +290,7 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
     panel.querySelectorAll<HTMLElement>('[data-preset]').forEach((el) => {
       el.addEventListener('click', () => {
         const key = el.dataset.preset!;
+        activePreset = key;
         selected.clear();
         if (key === 'all') data.languages.forEach((l) => selected.add(l.code));
         else if (key === 'last') {
@@ -275,7 +313,7 @@ export async function openPicker(videoId: string, actions: PickerActions): Promi
     $req(panel, '#vt-dry').addEventListener('change', async (e) => {
       dryRun = (e.target as HTMLInputElement).checked;
       await sendMsg({ type: 'PATCH_SETTINGS', partial: { dryRun } });
-      $req(panel, '#vt-dry-banner').style.display = dryRun ? 'block' : 'none';
+      $req(panel, '#vt-dry-banner').hidden = !dryRun;
       syncAutoBanner();
     });
 
@@ -317,21 +355,27 @@ function languageItem(
 ): HTMLLabelElement {
   const label = document.createElement('label');
   label.className = 'vt-lang-item';
+  label.title = `${lang.name} (${lang.code})`;
   const cb = document.createElement('input');
   cb.type = 'checkbox';
+  cb.className = 'ytl-checkbox';
   cb.value = lang.code;
   cb.checked = checked;
   cb.addEventListener('change', () => onToggle(cb.checked));
   const flag = document.createElement('span');
   flag.className = 'vt-flag';
+  flag.setAttribute('aria-hidden', 'true');
   flag.textContent = flagForLanguage(lang.code);
   const name = document.createElement('span');
   name.className = 'vt-lang-name';
-  name.textContent = `${lang.name} (${lang.code})`;
-  label.append(cb, flag, name);
+  name.textContent = lang.name;
+  const code = document.createElement('span');
+  code.className = 'vt-lang-code';
+  code.textContent = lang.code;
+  label.append(cb, flag, name, code);
   if (exists) {
     const badge = document.createElement('span');
-    badge.className = 'vt-badge';
+    badge.className = 'ytl-badge';
     badge.textContent = 'exists';
     badge.title = 'Already has a localization on this video';
     label.append(badge);

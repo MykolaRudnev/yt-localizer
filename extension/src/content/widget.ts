@@ -1,7 +1,8 @@
 import { jobNeedsReview, jobPercent, shouldShowJobWidget, type TranslateJob } from '@shared/job';
 import { escapeHtml } from '../ui/html';
+import { icon, SPINNER } from '../ui/icons';
 import { sendMsg } from './api';
-import { appendToPage, WIDGET_ID } from './dom';
+import { appendToPage, THEME_ROOT_CLASS, WIDGET_ID } from './dom';
 
 /** Minimized floating job pill (running jobs, or finished with pending reviews). */
 
@@ -19,11 +20,19 @@ export function syncWidget(job: TranslateJob | null, onExpand: () => void): void
   if (!el) {
     el = document.createElement('div');
     el.id = WIDGET_ID;
-    el.setAttribute('role', 'status');
+    el.className = THEME_ROOT_CLASS;
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
     el.setAttribute('aria-live', 'polite');
     appendToPage(el);
     void placeWidget(el);
     makeDraggable(el, onExpand);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onExpand();
+      }
+    });
   }
   paintWidget(el, job);
 }
@@ -83,22 +92,26 @@ function makeDraggable(el: HTMLElement, onClick: () => void) {
 function paintWidget(el: HTMLElement, job: TranslateJob) {
   const reviewCount = jobNeedsReview(job).length;
   const pct = jobPercent(job);
-  const label =
-    job.phase === 'running'
-      ? `Translating ${job.doneCount}/${job.totalCount}`
-      : reviewCount > 0
-        ? `${reviewCount} need review`
-        : `Done ${job.doneCount}/${job.totalCount}`;
-  const spin =
-    job.phase === 'running'
-      ? `<span class="vt-widget-icon"><span class="vt-spin" aria-hidden="true"></span></span>`
-      : `<span class="vt-widget-icon" aria-hidden="true">!</span>`;
+  const running = job.phase === 'running';
+  const label = running
+    ? `Translating ${job.doneCount}/${job.totalCount}`
+    : reviewCount > 0
+      ? `${reviewCount} need${reviewCount === 1 ? 's' : ''} review`
+      : `Done ${job.doneCount}/${job.totalCount}`;
+  const sub = running ? `${pct}% · click to expand` : 'Click to open the preview';
+  const glyph = running ? SPINNER : reviewCount > 0 ? icon('alert') : icon('check');
+  el.dataset.state = running ? 'running' : reviewCount > 0 ? 'review' : 'done';
+  el.title = 'YT Localizer — click to expand, drag to move';
   el.innerHTML = `
     <div class="vt-widget-main">
-      ${spin}
-      <span class="vt-widget-label">${escapeHtml(label)}</span>
+      <span class="vt-widget-icon" aria-hidden="true">${glyph}</span>
+      <span class="vt-widget-text">
+        <span class="vt-widget-label">${escapeHtml(label)}</span>
+        <span class="vt-widget-sub">${escapeHtml(sub)}</span>
+      </span>
+      <span class="ytl-icon-slot" aria-hidden="true">${icon('expand')}</span>
     </div>
-    <div class="vt-widget-bar"><div class="vt-widget-fill" style="width:${
-      job.phase === 'running' ? pct : 100
+    <div class="ytl-progress ytl-progress--sm"><div class="ytl-progress__fill" style="width:${
+      running ? pct : 100
     }%"></div></div>`;
 }

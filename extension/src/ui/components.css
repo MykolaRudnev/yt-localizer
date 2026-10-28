@@ -1,0 +1,670 @@
+/*
+ * Shared YT Localizer components (popup, options, Studio content UI).
+ * Every selector is prefixed with `.ytl-root` so rules apply only inside our
+ * own roots and outrank stray single-class / element rules from the host page.
+ * Consumes Tier 2/3 tokens from ./tokens.css only — see design.md.
+ *
+ * Components: icon · spinner · button · chip · badge · input/select/textarea ·
+ * search · field · checkbox/radio · switch + toggle row · segmented ·
+ * notice · progress · eyebrow · card · link · visually-hidden
+ */
+
+/* ---------- icon / spinner ---------- */
+.ytl-root .ytl-icon {
+  width: var(--ytl-size-4);
+  height: var(--ytl-size-4);
+  flex-shrink: 0;
+}
+
+.ytl-root .ytl-icon--sm {
+  width: var(--ytl-size-3);
+  height: var(--ytl-size-3);
+}
+
+.ytl-root .ytl-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--ytl-size-3);
+  height: var(--ytl-size-3);
+  border: var(--ytl-border-width-2) solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--ytl-radius-full);
+  animation: ytl-spin var(--ytl-duration-spin) linear infinite;
+}
+
+@keyframes ytl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- button ---------- */
+.ytl-root .ytl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ytl-space-2);
+  min-height: var(--ytl-control-height);
+  margin: 0;
+  padding: 0 var(--ytl-button-padding-x);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-strong);
+  border-radius: var(--ytl-radius-md);
+  background: var(--ytl-color-bg-surface);
+  color: var(--ytl-color-text-default);
+  font-family: var(--ytl-font-family-sans);
+  font-size: var(--ytl-font-size-md);
+  line-height: var(--ytl-line-height-md);
+  font-weight: var(--ytl-font-weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--ytl-duration-fast) var(--ytl-easing-standard),
+    border-color var(--ytl-duration-fast) var(--ytl-easing-standard),
+    color var(--ytl-duration-fast) var(--ytl-easing-standard);
+}
+
+.ytl-root .ytl-btn:hover {
+  background: var(--ytl-color-bg-hover);
+}
+
+.ytl-root .ytl-btn:active {
+  background: var(--ytl-color-bg-pressed);
+}
+
+.ytl-root .ytl-btn--primary {
+  border-color: var(--ytl-color-bg-accent);
+  background: var(--ytl-color-bg-accent);
+  color: var(--ytl-color-text-on-accent);
+  font-weight: var(--ytl-font-weight-semibold);
+}
+
+.ytl-root .ytl-btn--primary:hover {
+  border-color: var(--ytl-color-bg-accent-hover);
+  background: var(--ytl-color-bg-accent-hover);
+}
+
+.ytl-root .ytl-btn--primary:active {
+  border-color: var(--ytl-color-bg-accent-active);
+  background: var(--ytl-color-bg-accent-active);
+}
+
+.ytl-root .ytl-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ytl-color-text-muted);
+}
+
+.ytl-root .ytl-btn--ghost:hover {
+  background: var(--ytl-color-bg-hover);
+  color: var(--ytl-color-text-default);
+}
+
+.ytl-root .ytl-btn--danger {
+  border-color: var(--ytl-color-border-error);
+  color: var(--ytl-color-text-error);
+}
+
+.ytl-root .ytl-btn--danger:hover {
+  background: var(--ytl-color-bg-error-subtle);
+}
+
+.ytl-root .ytl-btn--lg {
+  min-height: var(--ytl-control-height-lg);
+  padding: 0 var(--ytl-space-4);
+}
+
+.ytl-root .ytl-btn--icon {
+  width: var(--ytl-control-height);
+  padding: 0;
+}
+
+.ytl-root .ytl-btn--block {
+  width: 100%;
+}
+
+.ytl-root .ytl-btn:disabled,
+.ytl-root .ytl-btn[aria-disabled='true'] {
+  border-color: var(--ytl-color-border-default);
+  background: var(--ytl-color-bg-disabled);
+  color: var(--ytl-color-text-disabled);
+  cursor: not-allowed;
+}
+
+.ytl-root .ytl-btn--ghost:disabled {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* Loading: label stays, spinner prepended, width stable enough not to jump. */
+.ytl-root .ytl-btn[aria-busy='true'] {
+  cursor: progress;
+}
+
+.ytl-root .ytl-btn[aria-busy='true']::before {
+  content: '';
+  width: var(--ytl-size-3);
+  height: var(--ytl-size-3);
+  border: var(--ytl-border-width-2) solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--ytl-radius-full);
+  animation: ytl-spin var(--ytl-duration-spin) linear infinite;
+}
+
+/* ---------- chip (preset / toggle button) ---------- */
+.ytl-root .ytl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ytl-space-1);
+  min-height: var(--ytl-control-height);
+  margin: 0;
+  padding: 0 var(--ytl-space-3);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-default);
+  border-radius: var(--ytl-radius-full);
+  background: var(--ytl-color-bg-surface);
+  color: var(--ytl-color-text-default);
+  font-family: var(--ytl-font-family-sans);
+  font-size: var(--ytl-font-size-sm);
+  line-height: var(--ytl-line-height-sm);
+  font-weight: var(--ytl-font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--ytl-duration-fast) var(--ytl-easing-standard),
+    border-color var(--ytl-duration-fast) var(--ytl-easing-standard);
+}
+
+.ytl-root .ytl-chip:hover {
+  border-color: var(--ytl-color-border-strong);
+  background: var(--ytl-color-bg-hover);
+}
+
+.ytl-root .ytl-chip:active {
+  background: var(--ytl-color-bg-pressed);
+}
+
+.ytl-root .ytl-chip[aria-pressed='true'] {
+  border-color: var(--ytl-color-border-accent);
+  background: var(--ytl-color-bg-accent-subtle);
+  color: var(--ytl-color-text-accent);
+}
+
+.ytl-root .ytl-chip:disabled {
+  background: var(--ytl-color-bg-disabled);
+  color: var(--ytl-color-text-disabled);
+  cursor: not-allowed;
+}
+
+.ytl-root .ytl-chip__hint {
+  color: var(--ytl-color-text-subtle);
+  font-weight: var(--ytl-font-weight-regular);
+}
+
+/* ---------- badge ---------- */
+.ytl-root .ytl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ytl-space-1);
+  min-height: var(--ytl-size-5);
+  padding: 0 var(--ytl-space-2);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-default);
+  border-radius: var(--ytl-radius-full);
+  background: var(--ytl-color-bg-muted);
+  color: var(--ytl-color-text-muted);
+  font-size: var(--ytl-font-size-xs);
+  line-height: var(--ytl-line-height-xs);
+  font-weight: var(--ytl-font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.ytl-root .ytl-badge[hidden] {
+  display: none;
+}
+
+.ytl-root .ytl-badge .ytl-icon,
+.ytl-root .ytl-badge .ytl-spinner {
+  width: var(--ytl-size-3);
+  height: var(--ytl-size-3);
+}
+
+.ytl-root .ytl-badge--accent {
+  border-color: var(--ytl-color-border-accent-subtle);
+  background: var(--ytl-color-bg-accent-subtle);
+  color: var(--ytl-color-text-accent);
+}
+
+.ytl-root .ytl-badge--warning {
+  border-color: var(--ytl-color-border-warning);
+  background: var(--ytl-color-bg-warning-subtle);
+  color: var(--ytl-color-text-warning);
+}
+
+.ytl-root .ytl-badge--error {
+  border-color: var(--ytl-color-border-error);
+  background: var(--ytl-color-bg-error-subtle);
+  color: var(--ytl-color-text-error);
+}
+
+.ytl-root .ytl-badge--solid {
+  border-color: var(--ytl-color-bg-accent);
+  background: var(--ytl-color-bg-accent);
+  color: var(--ytl-color-text-on-accent);
+}
+
+/* ---------- form controls ---------- */
+.ytl-root .ytl-input,
+.ytl-root .ytl-select,
+.ytl-root .ytl-textarea {
+  display: block;
+  width: 100%;
+  min-height: var(--ytl-control-height);
+  margin: 0;
+  padding: 0 var(--ytl-space-2);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-input);
+  border-radius: var(--ytl-radius-md);
+  background: var(--ytl-color-bg-surface);
+  color: var(--ytl-color-text-default);
+  font-family: var(--ytl-font-family-sans);
+  font-size: var(--ytl-font-size-md);
+  line-height: var(--ytl-line-height-md);
+  transition: border-color var(--ytl-duration-fast) var(--ytl-easing-standard);
+}
+
+.ytl-root .ytl-textarea {
+  padding: var(--ytl-space-2);
+  resize: vertical;
+}
+
+.ytl-root .ytl-input::placeholder,
+.ytl-root .ytl-textarea::placeholder {
+  color: var(--ytl-color-text-subtle);
+}
+
+.ytl-root .ytl-input:hover,
+.ytl-root .ytl-select:hover,
+.ytl-root .ytl-textarea:hover {
+  border-color: var(--ytl-color-border-control);
+}
+
+.ytl-root .ytl-input:focus,
+.ytl-root .ytl-select:focus,
+.ytl-root .ytl-textarea:focus {
+  border-color: var(--ytl-color-border-accent);
+}
+
+.ytl-root .ytl-input:disabled,
+.ytl-root .ytl-select:disabled,
+.ytl-root .ytl-textarea:disabled {
+  border-color: var(--ytl-color-border-default);
+  background: var(--ytl-color-bg-disabled);
+  color: var(--ytl-color-text-disabled);
+  cursor: not-allowed;
+}
+
+.ytl-root .ytl-input[aria-invalid='true'],
+.ytl-root .ytl-textarea[aria-invalid='true'] {
+  border-color: var(--ytl-color-border-error);
+}
+
+/* Search field with leading icon */
+.ytl-root .ytl-search {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.ytl-root .ytl-search > .ytl-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--ytl-space-2);
+  transform: translateY(-50%);
+  color: var(--ytl-color-icon-default);
+  pointer-events: none;
+}
+
+.ytl-root .ytl-search > .ytl-input {
+  padding-left: var(--ytl-space-8);
+}
+
+/* Field: label + control + helper */
+.ytl-root .ytl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ytl-space-1);
+  margin: 0;
+}
+
+.ytl-root .ytl-field__label {
+  color: var(--ytl-color-text-default);
+  font-size: var(--ytl-font-size-md);
+  line-height: var(--ytl-line-height-md);
+  font-weight: var(--ytl-font-weight-medium);
+}
+
+.ytl-root .ytl-field__hint {
+  margin: 0;
+  color: var(--ytl-color-text-muted);
+  font-size: var(--ytl-font-size-sm);
+  line-height: var(--ytl-line-height-sm);
+}
+
+/* Native checkbox / radio, tinted with the accent */
+.ytl-root .ytl-checkbox,
+.ytl-root .ytl-radio {
+  width: var(--ytl-size-4);
+  height: var(--ytl-size-4);
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--ytl-color-bg-accent);
+  cursor: pointer;
+}
+
+.ytl-root .ytl-checkbox:disabled,
+.ytl-root .ytl-radio:disabled {
+  cursor: not-allowed;
+}
+
+/* Switch: <input type="checkbox" role="switch" class="ytl-switch"> */
+.ytl-root .ytl-switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: var(--ytl-switch-width);
+  height: var(--ytl-switch-height);
+  margin: 0;
+  border: 0;
+  border-radius: var(--ytl-radius-full);
+  background: var(--ytl-switch-color-bg-off);
+  cursor: pointer;
+  transition: background-color var(--ytl-duration-fast) var(--ytl-easing-standard);
+}
+
+.ytl-root .ytl-switch::before {
+  content: '';
+  position: absolute;
+  top: var(--ytl-space-0-5);
+  left: var(--ytl-space-0-5);
+  width: var(--ytl-switch-knob);
+  height: var(--ytl-switch-knob);
+  border-radius: var(--ytl-radius-full);
+  background: var(--ytl-color-bg-surface);
+  box-shadow: var(--ytl-shadow-1);
+  transition: transform var(--ytl-duration-fast) var(--ytl-easing-standard);
+}
+
+.ytl-root .ytl-switch:hover {
+  background: var(--ytl-color-text-muted);
+}
+
+.ytl-root .ytl-switch:checked {
+  background: var(--ytl-color-bg-accent);
+}
+
+.ytl-root .ytl-switch:checked:hover {
+  background: var(--ytl-color-bg-accent-hover);
+}
+
+.ytl-root .ytl-switch:checked::before {
+  transform: translateX(
+    calc(var(--ytl-switch-width) - var(--ytl-switch-knob) - 2 * var(--ytl-space-0-5))
+  );
+}
+
+.ytl-root .ytl-switch:disabled {
+  background: var(--ytl-color-bg-pressed);
+  cursor: not-allowed;
+}
+
+/* Toggle row: switch/checkbox + label (+ hint). The whole row is the target. */
+.ytl-root .ytl-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ytl-space-2);
+  min-height: var(--ytl-control-height);
+  padding: var(--ytl-space-1) 0;
+  color: var(--ytl-color-text-default);
+  font-size: var(--ytl-font-size-md);
+  line-height: var(--ytl-line-height-md);
+  cursor: pointer;
+}
+
+.ytl-root .ytl-toggle > .ytl-switch,
+.ytl-root .ytl-toggle > .ytl-checkbox,
+.ytl-root .ytl-toggle > .ytl-radio {
+  margin-top: var(--ytl-space-0-5);
+}
+
+.ytl-root .ytl-toggle__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ytl-root .ytl-toggle__hint {
+  color: var(--ytl-color-text-muted);
+  font-size: var(--ytl-font-size-sm);
+  line-height: var(--ytl-line-height-sm);
+}
+
+.ytl-root .ytl-toggle--compact {
+  align-items: center;
+  white-space: nowrap;
+}
+
+.ytl-root .ytl-toggle--compact > .ytl-switch {
+  margin-top: 0;
+}
+
+/* Segmented control (radio group) */
+.ytl-root .ytl-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--ytl-space-0-5);
+  margin: 0;
+  padding: var(--ytl-space-0-5);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-default);
+  border-radius: var(--ytl-radius-md);
+  background: var(--ytl-color-bg-muted);
+}
+
+.ytl-root .ytl-segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ytl-space-1);
+  min-height: var(--ytl-size-7);
+  padding: 0 var(--ytl-space-3);
+  border-radius: var(--ytl-radius-sm);
+  color: var(--ytl-color-text-muted);
+  font-size: var(--ytl-font-size-sm);
+  line-height: var(--ytl-line-height-sm);
+  font-weight: var(--ytl-font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ytl-root .ytl-segmented__item:hover {
+  color: var(--ytl-color-text-default);
+}
+
+.ytl-root .ytl-segmented__item:has(input:checked) {
+  background: var(--ytl-color-bg-surface);
+  color: var(--ytl-color-text-default);
+  box-shadow: var(--ytl-shadow-1);
+}
+
+.ytl-root .ytl-segmented__item:has(input:focus-visible) {
+  outline: var(--ytl-focus-ring-width) solid var(--ytl-color-focus-ring);
+  outline-offset: var(--ytl-border-width-1);
+}
+
+.ytl-root .ytl-segmented__count {
+  color: var(--ytl-color-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- notice (inline banner) ---------- */
+.ytl-root .ytl-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ytl-space-2);
+  margin: 0;
+  padding: var(--ytl-space-2) var(--ytl-space-3);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-accent-subtle);
+  border-radius: var(--ytl-radius-md);
+  background: var(--ytl-color-bg-accent-subtle);
+  color: var(--ytl-color-text-default);
+  font-size: var(--ytl-font-size-sm);
+  line-height: var(--ytl-line-height-md);
+}
+
+.ytl-root .ytl-notice[hidden] {
+  display: none;
+}
+
+.ytl-root .ytl-notice > .ytl-icon {
+  margin-top: var(--ytl-space-0-5);
+  color: var(--ytl-color-icon-success);
+}
+
+.ytl-root .ytl-notice--warning {
+  border-color: var(--ytl-color-border-warning);
+  background: var(--ytl-color-bg-warning-subtle);
+}
+
+.ytl-root .ytl-notice--warning > .ytl-icon {
+  color: var(--ytl-color-icon-warning);
+}
+
+.ytl-root .ytl-notice--error {
+  border-color: var(--ytl-color-border-error);
+  background: var(--ytl-color-bg-error-subtle);
+}
+
+.ytl-root .ytl-notice--error > .ytl-icon {
+  color: var(--ytl-color-icon-error);
+}
+
+.ytl-root .ytl-notice__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ytl-space-0-5);
+  min-width: 0;
+}
+
+.ytl-root .ytl-notice__hint {
+  color: var(--ytl-color-text-muted);
+}
+
+/* ---------- progress ---------- */
+.ytl-root .ytl-progress {
+  height: var(--ytl-progress-height);
+  overflow: hidden;
+  border-radius: var(--ytl-radius-full);
+  background: var(--ytl-color-bg-pressed);
+}
+
+.ytl-root .ytl-progress--sm {
+  height: var(--ytl-progress-height-sm);
+}
+
+.ytl-root .ytl-progress__fill {
+  height: 100%;
+  width: 0;
+  border-radius: var(--ytl-radius-full);
+  background: var(--ytl-color-bg-accent);
+  transition: width var(--ytl-duration-base) var(--ytl-easing-standard);
+}
+
+.ytl-root .ytl-progress__fill[data-phase='failed'],
+.ytl-root .ytl-progress__fill[data-phase='stopped'] {
+  background: var(--ytl-color-bg-error);
+}
+
+/* ---------- text helpers ---------- */
+.ytl-root .ytl-eyebrow {
+  margin: 0;
+  color: var(--ytl-color-text-muted);
+  font-size: var(--ytl-font-size-xs);
+  line-height: var(--ytl-line-height-xs);
+  font-weight: var(--ytl-font-weight-semibold);
+  letter-spacing: var(--ytl-letter-spacing-caps);
+  text-transform: uppercase;
+}
+
+.ytl-root .ytl-muted {
+  color: var(--ytl-color-text-muted);
+}
+
+.ytl-root .ytl-code {
+  font-family: var(--ytl-font-family-mono);
+  font-size: var(--ytl-font-size-sm);
+}
+
+.ytl-root .ytl-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ytl-color-text-link);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: var(--ytl-space-0-5);
+  cursor: pointer;
+}
+
+.ytl-root .ytl-link:hover {
+  color: var(--ytl-color-text-link-hover);
+}
+
+/* ---------- card ---------- */
+.ytl-root .ytl-card {
+  margin: 0;
+  padding: var(--ytl-space-4);
+  border: var(--ytl-border-width-1) solid var(--ytl-color-border-default);
+  border-radius: var(--ytl-radius-lg);
+  background: var(--ytl-color-bg-surface);
+  box-shadow: var(--ytl-shadow-1);
+}
+
+/* ---------- a11y helpers ---------- */
+.ytl-root .ytl-visually-hidden {
+  position: absolute;
+  width: var(--ytl-border-width-1);
+  height: var(--ytl-border-width-1);
+  margin: calc(-1 * var(--ytl-border-width-1));
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* `hidden` must win over any layout rule that sets display (id-anchored rules included). */
+.ytl-root [hidden] {
+  display: none !important;
+}
+
+/* One focus treatment for every interactive element. */
+.ytl-root :focus-visible {
+  outline: var(--ytl-focus-ring-width) solid var(--ytl-color-focus-ring);
+  outline-offset: var(--ytl-focus-ring-offset);
+}
+
+.ytl-root .ytl-input:focus-visible,
+.ytl-root .ytl-select:focus-visible,
+.ytl-root .ytl-textarea:focus-visible {
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ytl-root *,
+  .ytl-root *::before {
+    transition-duration: 0s !important;
+  }
+
+  .ytl-root .ytl-spinner,
+  .ytl-root .ytl-btn[aria-busy='true']::before {
+    animation-duration: calc(4 * var(--ytl-duration-spin));
+  }
+}

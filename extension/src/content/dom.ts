@@ -1,11 +1,17 @@
 /** Modal root / widget DOM plumbing for the Studio content script. */
 
+import { escapeHtml } from '../ui/html';
+import { icon } from '../ui/icons';
+
 export const BUTTON_ID = 'veil-translate-btn';
 export const MODAL_ID = 'vt-modal-root';
 export const WIDGET_ID = 'vt-job-widget';
 
 /** What the modal root currently shows (`data-mode`). */
 export type ModalMode = 'picker' | 'connect' | 'progress' | 'preview' | 'result';
+
+/** Class that scopes design tokens + components to our roots (never Studio's :root). */
+export const THEME_ROOT_CLASS = 'ytl-root';
 
 /** Modes that belong to a translate job session (vs. the language picker). */
 export const JOB_MODES: readonly ModalMode[] = ['progress', 'preview', 'result'];
@@ -34,6 +40,7 @@ export function ensureModalRoot(mode?: ModalMode): HTMLElement {
   if (!root) {
     root = document.createElement('div');
     root.id = MODAL_ID;
+    root.className = THEME_ROOT_CLASS;
     appendToPage(root);
   }
   if (mode) root.dataset.mode = mode;
@@ -119,6 +126,30 @@ export function bindModalChrome(opts: {
 
   const panel = opts.root.querySelector<HTMLElement>('.vt-panel');
   if (panel && !panel.contains(document.activeElement)) focusables(panel)[0]?.focus();
+}
+
+/**
+ * Shared modal header: eyebrow + title (#vt-title, the dialog label) +
+ * optional subtitle + close button (#vt-x).
+ */
+export function panelHeadHtml(opts: {
+  title: string;
+  subtitle?: string;
+  closeLabel?: string;
+}): string {
+  const sub = opts.subtitle
+    ? `<p class="vt-subtitle" id="vt-subtitle" title="${escapeHtml(opts.subtitle)}">${escapeHtml(opts.subtitle)}</p>`
+    : '';
+  return `<header class="vt-panel-head">
+      <div class="vt-head-text">
+        <p class="ytl-eyebrow">YT Localizer</p>
+        <h2 class="vt-heading" id="vt-title">${escapeHtml(opts.title)}</h2>
+        ${sub}
+      </div>
+      <button type="button" class="ytl-btn ytl-btn--ghost ytl-btn--icon" id="vt-x" aria-label="${escapeHtml(
+        opts.closeLabel ?? 'Close',
+      )}" title="${escapeHtml(opts.closeLabel ?? 'Close')} (Esc)">${icon('close')}</button>
+    </header>`;
 }
 
 /** Typed `querySelector` that throws when a required element is missing. */

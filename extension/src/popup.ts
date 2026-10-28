@@ -7,6 +7,8 @@ import {
   sendRuntimeMessage,
 } from './messaging';
 import { escapeAttr, escapeHtml } from './ui/html';
+import { icon } from './ui/icons';
+import { followSystemTheme } from './ui/theme';
 
 type ChannelView = {
   id: string;
@@ -120,14 +122,22 @@ function renderJob(job: TranslateJob | null) {
   const pct = jobPercent(job);
   const failedN = jobFailed(job).length;
   let status = '';
-  if (job.phase === 'running') status = `Translating ${job.doneCount}/${job.totalCount}`;
-  else if (failedN) status = `⚠ ${failedN} failed · ${job.doneCount}/${job.totalCount}`;
-  else status = `✓ Done ${job.doneCount}/${job.totalCount}`;
+  let badge = '';
+  if (job.phase === 'running') {
+    status = `Translating ${job.doneCount}/${job.totalCount}`;
+    badge = '<span class="ytl-badge ytl-badge--accent"><span class="ytl-spinner" aria-hidden="true"></span>Running</span>';
+  } else if (failedN) {
+    status = `${failedN} failed · ${job.doneCount}/${job.totalCount}`;
+    badge = `<span class="ytl-badge ytl-badge--error">${icon('error', { small: true })}Errors</span>`;
+  } else {
+    status = `Done ${job.doneCount}/${job.totalCount}`;
+    badge = `<span class="ytl-badge ytl-badge--accent">${icon('check', { small: true })}Done</span>`;
+  }
   const autoApproved = autoApprovedSummary(jobAutoApproved(job).length);
   if (autoApproved) status += ` · ${autoApproved}`;
   $('jobSummary').innerHTML = `
-    <div class="job-line"><span class="muted">Video</span> <code>${escapeHtml(job.videoId)}</code></div>
-    <div class="job-line">${escapeHtml(status)} · ${pct}%</div>`;
+    <div class="job-line">${badge}<span>${escapeHtml(status)} · ${pct}%</span></div>
+    <div class="job-line"><span class="ytl-muted">Video</span> <span class="ytl-code">${escapeHtml(job.videoId)}</span></div>`;
   $('jobFill').style.width = `${pct}%`;
   $('jobFill').dataset.phase = job.phase;
 }
@@ -164,7 +174,7 @@ function renderChecklist(settings: AppSettings) {
   for (const item of items) {
     const li = document.createElement('li');
     li.className = item.ok ? 'ok' : 'missing';
-    li.textContent = (item.ok ? '✓ ' : '○ ') + item.text;
+    li.innerHTML = `${icon(item.ok ? 'checkCircle' : 'alert')}<span>${escapeHtml(item.text)}</span>`;
     list.append(li);
     if (!item.ok) anyMissing = true;
   }
@@ -176,7 +186,7 @@ async function renderChannels(channels: ChannelView[], activeChannelId: string |
   box.innerHTML = '';
 
   if (!channels.length) {
-    box.innerHTML = `<p class="muted">No channels connected yet.</p>`;
+    box.innerHTML = `<p class="ytl-muted">No channels connected yet — add one to publish.</p>`;
     return;
   }
 
@@ -188,7 +198,7 @@ async function renderChannels(channels: ChannelView[], activeChannelId: string |
       : `<span class="avatar placeholder"></span>`;
     row.innerHTML = `
       <label class="channel-main">
-        <input type="radio" name="activeChannel" value="${escapeAttr(ch.id)}" ${
+        <input type="radio" class="ytl-radio" name="activeChannel" value="${escapeAttr(ch.id)}" ${
           ch.id === activeChannelId ? 'checked' : ''
         } />
         ${thumb}
@@ -197,7 +207,7 @@ async function renderChannels(channels: ChannelView[], activeChannelId: string |
           <span class="channel-email">${escapeHtml(ch.email ?? ch.id)}</span>
         </span>
       </label>
-      <button type="button" class="linkish remove" data-id="${escapeAttr(ch.id)}">Remove</button>`;
+      <button type="button" class="ytl-btn ytl-btn--ghost remove" data-id="${escapeAttr(ch.id)}" aria-label="Remove ${escapeAttr(ch.title)}">Remove</button>`;
 
     row.querySelector('input')!.addEventListener('change', async () => {
       const res = await sendRuntimeMessage<{
@@ -261,4 +271,5 @@ function renderStatus(
   $('activeChannel').textContent = active?.title ?? (channels.length ? '—' : 'none');
 }
 
+followSystemTheme();
 void load();

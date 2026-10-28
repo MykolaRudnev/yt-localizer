@@ -9,7 +9,7 @@
  * - content/widget.ts         minimized floating widget
  */
 import './content.css';
-import { BUTTON_ID } from './content/dom';
+import { BUTTON_ID, THEME_ROOT_CLASS } from './content/dom';
 import { bootJobUi, getVideoId, isUiExpanded, onPillClick, syncJobWidget } from './content/session';
 
 declare global {
@@ -30,6 +30,7 @@ function ensureButton() {
   if (!btn) {
     btn = document.createElement('button');
     btn.id = BUTTON_ID;
+    btn.className = THEME_ROOT_CLASS;
     btn.type = 'button';
     btn.textContent = 'Auto Titles & Description';
     btn.addEventListener('click', () => void onPillClick());

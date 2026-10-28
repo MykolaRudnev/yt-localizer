@@ -4,6 +4,7 @@ import { normalizeAppSettings } from '@shared/settings';
 import type { AppSettings, ChannelSettings } from '@shared/types';
 import languagesData from '../../languages.json';
 import { sendRuntimeMessage } from './messaging';
+import { followSystemTheme } from './ui/theme';
 
 type LangFile = {
   presets: Record<string, { label: string; codes: string[] }>;
@@ -40,6 +41,7 @@ function renderLangList(selected: Set<string>, filter: string) {
     }
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.className = 'ytl-checkbox';
     cb.value = lang.code;
     cb.checked = selected.has(lang.code);
     cb.addEventListener('change', () => {
@@ -47,7 +49,14 @@ function renderLangList(selected: Set<string>, filter: string) {
       else selected.delete(lang.code);
       updateCount(selected);
     });
-    label.append(cb, document.createTextNode(` ${lang.name} (${lang.code})`));
+    label.title = `${lang.name} (${lang.code})`;
+    const name = document.createElement('span');
+    name.className = 'lang-name';
+    name.textContent = lang.name;
+    const code = document.createElement('span');
+    code.className = 'lang-code';
+    code.textContent = lang.code;
+    label.append(cb, name, code);
     list.append(label);
   }
   updateCount(selected);
@@ -378,4 +387,5 @@ async function main() {
   });
 }
 
+followSystemTheme();
 main();

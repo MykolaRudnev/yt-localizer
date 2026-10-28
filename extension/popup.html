@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="ytl-root">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,55 +8,53 @@
   </head>
   <body>
     <main class="popup">
-      <header>
+      <header class="popup-head">
         <div class="brand">
-          <p class="brand-mark">Open source</p>
-          <h1>YT Localizer</h1>
+          <p class="ytl-eyebrow">Open source</p>
+          <h1 class="brand-title">YT Localizer</h1>
         </div>
-        <a href="#" id="openOptions">Options</a>
+        <a href="#" id="openOptions" class="ytl-btn ytl-btn--ghost">Options</a>
       </header>
 
-      <p id="studioHint" class="studio-hint hidden" role="status"></p>
+      <p id="studioHint" class="ytl-notice ytl-notice--warning hidden" role="status"></p>
 
-      <section id="checklist" class="checklist hidden">
-        <h2>Setup checklist</h2>
-        <ul id="checklistItems"></ul>
-        <p class="hint">
+      <section id="checklist" class="ytl-card popup-section popup-section--warning hidden" aria-labelledby="checklistTitle">
+        <h2 class="ytl-eyebrow" id="checklistTitle">Setup checklist</h2>
+        <ul id="checklistItems" class="checklist"></ul>
+        <p class="ytl-field__hint">
           Follow
-          <a href="#" id="setupLink">SETUP.md</a>
+          <a href="#" id="setupLink" class="ytl-link">SETUP.md</a>
           (§3 OAuth client, §4 Gemini key).
         </p>
       </section>
 
-      <section>
-        <h2>Channels</h2>
-        <div id="channelList" class="channel-list"></div>
-        <div class="channel-actions">
-          <button type="button" id="addChannelBtn" class="primary">Add channel</button>
-        </div>
-        <p class="hint">
-          Login with another Google account (or Brand Account). Each account must be a
-          Test user while the OAuth app is in Testing.
+      <section id="jobSection" class="ytl-card popup-section hidden" aria-labelledby="jobTitle">
+        <h2 class="ytl-eyebrow" id="jobTitle">Current job</h2>
+        <div id="jobSummary" class="job-summary" aria-live="polite"></div>
+        <div class="ytl-progress"><div id="jobFill" class="ytl-progress__fill"></div></div>
+        <button type="button" class="ytl-btn ytl-btn--primary ytl-btn--block" id="openStudio">Open in Studio</button>
+      </section>
+
+      <section class="ytl-card popup-section" aria-labelledby="channelsTitle">
+        <h2 class="ytl-eyebrow" id="channelsTitle">Channels</h2>
+        <div id="channelList" class="channel-list" role="radiogroup" aria-labelledby="channelsTitle"></div>
+        <button type="button" id="addChannelBtn" class="ytl-btn ytl-btn--block">Add channel</button>
+        <p class="ytl-field__hint">
+          Sign in with another Google account (or Brand Account). Each account must be a Test
+          user while the OAuth app is in Testing.
         </p>
       </section>
 
-      <section id="jobSection" class="job-section hidden">
-        <h2>Current job</h2>
-        <div id="jobSummary" class="job-summary"></div>
-        <div class="job-bar"><div id="jobFill" class="job-fill"></div></div>
-        <button type="button" class="primary" id="openStudio">Open in Studio</button>
-      </section>
-
-      <section>
-        <h2>Status</h2>
+      <section class="ytl-card popup-section" aria-labelledby="statusTitle">
+        <h2 class="ytl-eyebrow" id="statusTitle">Status</h2>
         <dl class="status">
           <div><dt>Engine</dt><dd id="engineStatus">—</dd></div>
           <div><dt>Languages</dt><dd id="langCount">—</dd></div>
-          <div><dt>Active</dt><dd id="activeChannel">—</dd></div>
+          <div><dt>Active channel</dt><dd id="activeChannel">—</dd></div>
         </dl>
-        <label class="row">
-          <input type="checkbox" id="dryRun" />
-          Dry-run (preview only)
+        <label class="ytl-toggle">
+          <input type="checkbox" role="switch" class="ytl-switch" id="dryRun" />
+          <span class="ytl-toggle__text">Dry-run<span class="ytl-toggle__hint">Preview only, nothing is published</span></span>
         </label>
       </section>
     </main>

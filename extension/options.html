@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="ytl-root">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,168 +8,201 @@
   </head>
   <body>
     <main class="wrap">
-      <p class="brand-mark">Open source</p>
-      <h1>YT Localizer</h1>
-      <p class="sub">Configure languages, engines, and publishing defaults.</p>
+      <header class="page-head">
+        <p class="ytl-eyebrow">Open source</p>
+        <h1 class="page-title">YT Localizer</h1>
+        <p class="ytl-field__hint">Configure languages, engines, and publishing defaults.</p>
+      </header>
 
-      <section>
-        <h2>OAuth</h2>
-        <label>
-          Google OAuth Client ID
-          <input id="oauthClientId" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" />
+      <section class="ytl-card settings-section" aria-labelledby="sec-oauth">
+        <div class="section-head">
+          <h2 class="section-title" id="sec-oauth">Google connection</h2>
+          <p class="ytl-field__hint">OAuth client used to publish localizations through the YouTube Data API.</p>
+        </div>
+        <label class="ytl-field">
+          <span class="ytl-field__label">Google OAuth Client ID</span>
+          <input id="oauthClientId" class="ytl-input" type="text" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off" />
+          <span class="ytl-field__hint">Web application client. Redirect URI: <code class="ytl-code" id="redirectUri">https://&lt;extension-id&gt;.chromiumapp.org/</code></span>
         </label>
-        <p class="hint">Web application client. Redirect URI: <code id="redirectUri">https://&lt;extension-id&gt;.chromiumapp.org/</code></p>
       </section>
 
-      <section>
-        <h2>Translation engine</h2>
-        <label>
-          Engine
-          <select id="engine">
+      <section class="ytl-card settings-section" aria-labelledby="sec-engine">
+        <div class="section-head">
+          <h2 class="section-title" id="sec-engine">Translation engine</h2>
+          <p class="ytl-field__hint">Pick the primary engine and add keys for any fallbacks you want to use.</p>
+        </div>
+        <label class="ytl-field">
+          <span class="ytl-field__label">Engine</span>
+          <select id="engine" class="ytl-select">
             <option value="gemini">Gemini (default)</option>
             <option value="deepl">DeepL Free</option>
             <option value="libretranslate">LibreTranslate</option>
           </select>
         </label>
-        <label>
-          Gemini API key
-          <input id="geminiApiKey" type="password" autocomplete="off" />
-        </label>
-        <label>
-          Gemini model
-          <input id="geminiModel" type="text" placeholder="auto (newest flash)" autocomplete="off" list="geminiModelList" />
-        </label>
-        <div class="row-actions">
-          <button type="button" id="loadGeminiModels">Load models</button>
-          <select id="geminiModelSelect" aria-label="Loaded Gemini models">
-            <option value="">— load models to pick —</option>
-          </select>
+
+        <fieldset class="field-group">
+          <legend class="ytl-eyebrow">Gemini</legend>
+          <label class="ytl-field">
+            <span class="ytl-field__label">Gemini API key</span>
+            <input id="geminiApiKey" class="ytl-input" type="password" autocomplete="off" />
+          </label>
+          <div class="ytl-field">
+            <label class="ytl-field__label" for="geminiModel">Gemini model</label>
+            <div class="inline-controls">
+              <input id="geminiModel" class="ytl-input" type="text" placeholder="auto (newest flash)" autocomplete="off" list="geminiModelList" />
+              <button type="button" class="ytl-btn" id="loadGeminiModels">Load models</button>
+            </div>
+            <select id="geminiModelSelect" class="ytl-select" aria-label="Loaded Gemini models">
+              <option value="">— load models to pick —</option>
+            </select>
+            <span class="ytl-field__hint" id="geminiModelHint" role="status">Leave empty for auto-pick of the newest *-flash model. Fallback alias: gemini-flash-latest.</span>
+            <datalist id="geminiModelList"></datalist>
+          </div>
+          <label class="ytl-field">
+            <span class="ytl-field__label">Throttle (ms between requests)</span>
+            <input id="geminiThrottleMs" class="ytl-input input-narrow" type="number" min="0" step="500" value="4000" />
+            <span class="ytl-field__hint">Default 4000 (~1 request / 4 s) to stay under free-tier per-minute limits.</span>
+          </label>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend class="ytl-eyebrow">DeepL &amp; LibreTranslate</legend>
+          <label class="ytl-field">
+            <span class="ytl-field__label">DeepL Free API key</span>
+            <input id="deeplApiKey" class="ytl-input" type="password" autocomplete="off" />
+          </label>
+          <label class="ytl-field">
+            <span class="ytl-field__label">LibreTranslate URL</span>
+            <input id="libreTranslateUrl" class="ytl-input" type="url" placeholder="http://localhost:5000" />
+          </label>
+          <label class="ytl-field">
+            <span class="ytl-field__label">LibreTranslate API key <span class="ytl-muted">(optional)</span></span>
+            <input id="libreTranslateApiKey" class="ytl-input" type="password" autocomplete="off" />
+          </label>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend class="ytl-eyebrow">Fallback</legend>
+          <label class="ytl-toggle">
+            <input id="autoFallbackOnQuota" class="ytl-switch" role="switch" type="checkbox" checked />
+            <span class="ytl-toggle__text">Auto-fallback on quota<span class="ytl-toggle__hint">Gemini models (auto-ranked) → DeepL → LibreTranslate. When a model hits its daily quota the next one is tried.</span></span>
+          </label>
+        </fieldset>
+
+        <div class="inline-controls">
+          <button type="button" class="ytl-btn" id="testEngine">Test engine</button>
+          <span class="ytl-field__hint" id="engineTestResult" role="status"></span>
         </div>
-        <p class="hint" id="geminiModelHint">Leave empty for auto-pick of the newest *-flash model. Fallback alias: gemini-flash-latest.</p>
-        <datalist id="geminiModelList"></datalist>
-        <label>
-          DeepL Free API key
-          <input id="deeplApiKey" type="password" autocomplete="off" />
-        </label>
-        <label>
-          LibreTranslate URL
-          <input id="libreTranslateUrl" type="url" placeholder="http://localhost:5000" />
-        </label>
-        <label>
-          LibreTranslate API key (optional)
-          <input id="libreTranslateApiKey" type="password" autocomplete="off" />
-        </label>
-        <h3 class="subhead">Fallback order</h3>
-        <p class="hint">
-          Gemini models (auto-ranked) → DeepL → LibreTranslate. When a Gemini model hits daily
-          quota, the next model is tried; then other engines if configured.
-        </p>
-        <label class="row">
-          <input id="autoFallbackOnQuota" type="checkbox" checked />
-          Auto-fallback on quota (default on)
-        </label>
-        <label>
-          Gemini throttle (ms between requests)
-          <input id="geminiThrottleMs" type="number" min="0" step="500" value="4000" />
-        </label>
-        <p class="hint">Default 4000 (~1 request / 4s) to stay under free-tier per-minute limits.</p>
-        <div class="row-actions">
-          <button type="button" id="testEngine">Test engine</button>
-        </div>
-        <p class="hint" id="engineTestResult" role="status"></p>
       </section>
 
-      <section>
-        <h2>Per-channel settings</h2>
-        <p class="hint">
-          Languages, protected terms, and default source language are stored per connected
-          channel. Connect channels from the toolbar popup first.
-        </p>
-        <label>
-          Channel
-          <select id="channelSelect">
+      <section class="ytl-card settings-section" aria-labelledby="sec-channel">
+        <div class="section-head">
+          <h2 class="section-title" id="sec-channel">Per-channel settings</h2>
+          <p class="ytl-field__hint">Languages, protected terms and default source language are stored per connected channel. Connect channels from the toolbar popup first.</p>
+        </div>
+        <label class="ytl-field">
+          <span class="ytl-field__label">Channel</span>
+          <select id="channelSelect" class="ytl-select">
             <option value="">— connect a channel —</option>
           </select>
         </label>
-        <div id="channelSettingsPanel" class="hidden">
-          <h3 class="subhead">Languages <span id="selectedCount" class="count">0 selected</span></h3>
-          <div class="presets">
-            <button type="button" data-preset="top10">Top 10</button>
-            <button type="button" data-preset="top20">Top 20</button>
-            <button type="button" data-preset="top10rpm" title="Estimate based on typical RPM markets">Top 10 RPM (estimate)</button>
-            <button type="button" data-preset="top20rpm" title="Estimate based on typical RPM markets">Top 20 RPM (estimate)</button>
-            <button type="button" data-preset="last">Last used</button>
-            <button type="button" data-preset="all">Select all</button>
-            <button type="button" data-preset="none">Clear</button>
+        <div id="channelSettingsPanel" class="settings-stack hidden">
+          <div class="ytl-field">
+            <div class="label-row">
+              <span class="ytl-field__label">Languages</span>
+              <span id="selectedCount" class="ytl-badge ytl-badge--accent">0 selected</span>
+            </div>
+            <div class="chips" role="group" aria-label="Presets">
+              <button type="button" class="ytl-chip" data-preset="top10">Top 10</button>
+              <button type="button" class="ytl-chip" data-preset="top20">Top 20</button>
+              <button type="button" class="ytl-chip" data-preset="top10rpm" title="Estimate based on typical RPM markets">Top 10 RPM <span class="ytl-chip__hint">est.</span></button>
+              <button type="button" class="ytl-chip" data-preset="top20rpm" title="Estimate based on typical RPM markets">Top 20 RPM <span class="ytl-chip__hint">est.</span></button>
+              <button type="button" class="ytl-chip" data-preset="last">Last used</button>
+              <button type="button" class="ytl-chip" data-preset="all">Select all</button>
+              <button type="button" class="ytl-chip" data-preset="none">Clear</button>
+            </div>
+            <label class="ytl-search">
+              <svg class="ytl-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="7" cy="7" r="4.25"/><path d="M10.25 10.25l3 3"/></svg>
+              <span class="ytl-visually-hidden">Search languages</span>
+              <input id="langSearch" class="ytl-input" type="search" placeholder="Search by name or code…" />
+            </label>
+            <div id="langList" class="lang-list" role="group" aria-label="Languages"></div>
           </div>
-          <input id="langSearch" type="search" placeholder="Search languages…" />
-          <div id="langList" class="lang-list"></div>
-          <label>
-            Default source language
-            <input id="defaultSourceLanguage" type="text" maxlength="16" />
+          <label class="ytl-field">
+            <span class="ytl-field__label">Default source language</span>
+            <input id="defaultSourceLanguage" class="ytl-input input-narrow" type="text" maxlength="16" />
           </label>
-          <label>
-            Protected terms (one per line; channel name is added automatically on connect)
-            <textarea id="protectedTerms" rows="4"></textarea>
+          <label class="ytl-field">
+            <span class="ytl-field__label">Protected terms</span>
+            <textarea id="protectedTerms" class="ytl-textarea" rows="4"></textarea>
+            <span class="ytl-field__hint">One per line; never translated. The channel name is added automatically on connect.</span>
           </label>
-          <label class="row">
-            <input id="autoPublish" type="checkbox" />
-            Auto-publish (writes translations to YouTube in batches as they finish; OFF by default)
+          <label class="ytl-toggle">
+            <input id="autoPublish" class="ytl-switch" role="switch" type="checkbox" />
+            <span class="ytl-toggle__text">Auto-publish<span class="ytl-toggle__hint">Writes translations to YouTube in batches as they finish. Off by default.</span></span>
           </label>
         </div>
       </section>
 
-      <section>
-        <h2>Translation cache</h2>
-        <p class="hint" id="cacheStats">Loading…</p>
-        <button type="button" id="clearCache">Clear translation cache</button>
-      </section>
-
-      <section>
-        <h2>Global translation options</h2>
-        <label>
-          Title &gt; 100 chars
-          <select id="titleOver100">
+      <section class="ytl-card settings-section" aria-labelledby="sec-rules">
+        <div class="section-head">
+          <h2 class="section-title" id="sec-rules">Translation &amp; publishing</h2>
+          <p class="ytl-field__hint">Global defaults for every channel. Most can also be toggled in the Studio modal.</p>
+        </div>
+        <label class="ytl-field">
+          <span class="ytl-field__label">Title over 100 characters</span>
+          <select id="titleOver100" class="ytl-select">
             <option value="truncate">Segment-aware shorten (local, free)</option>
             <option value="ai_shorten">Ask AI to shorten (LLM engines)</option>
           </select>
         </label>
-        <label class="row">
-          <input id="protectLastSegment" type="checkbox" checked />
-          Protect last title segment when shortening (e.g. “Focus &amp; Sleep”)
+        <label class="ytl-toggle">
+          <input id="protectLastSegment" class="ytl-switch" role="switch" type="checkbox" checked />
+          <span class="ytl-toggle__text">Protect last title segment<span class="ytl-toggle__hint">Keeps the tail of the title (e.g. “Focus &amp; Sleep”) when shortening.</span></span>
         </label>
-        <label class="row">
-          <input id="autoApproveReview" type="checkbox" />
-          Auto-approve review items — publish shortened titles as fitted without clicking Approve
-          (default off; also toggle in the Studio modal)
+        <label class="ytl-toggle">
+          <input id="autoApproveReview" class="ytl-switch" role="switch" type="checkbox" />
+          <span class="ytl-toggle__text">Auto-approve shortened titles<span class="ytl-toggle__hint">Publish fitted titles without clicking Approve. Off by default.</span></span>
         </label>
-        <label>
-          Hashtags
-          <select id="hashtagMode">
-            <option value="keep">Keep as is</option>
-            <option value="translate">Translate</option>
-          </select>
+        <div class="field-grid">
+          <label class="ytl-field">
+            <span class="ytl-field__label">Hashtags</span>
+            <select id="hashtagMode" class="ytl-select">
+              <option value="keep">Keep as is</option>
+              <option value="translate">Translate</option>
+            </select>
+          </label>
+          <label class="ytl-field">
+            <span class="ytl-field__label">Chapter lines (3+ timestamps)</span>
+            <select id="chapterMode" class="ytl-select">
+              <option value="translate_labels">Translate labels, keep timestamps</option>
+              <option value="keep">Keep lines as is</option>
+            </select>
+          </label>
+        </div>
+        <label class="ytl-toggle">
+          <input id="dryRun" class="ytl-switch" role="switch" type="checkbox" />
+          <span class="ytl-toggle__text">Dry-run<span class="ytl-toggle__hint">Preview only — Publish disabled. On by default after install.</span></span>
         </label>
-        <label>
-          Chapter lines (3+ timestamp lines)
-          <select id="chapterMode">
-            <option value="translate_labels">Translate labels, keep timestamps</option>
-            <option value="keep">Keep lines as is</option>
-          </select>
-        </label>
-        <label class="row">
-          <input id="dryRun" type="checkbox" />
-          Dry-run (preview only — Publish disabled; ON by default on first install)
-        </label>
-        <label class="row">
-          <input id="skipExisting" type="checkbox" />
-          Skip existing localizations (default on; use Overwrite in the Studio modal to replace)
+        <label class="ytl-toggle">
+          <input id="skipExisting" class="ytl-switch" role="switch" type="checkbox" />
+          <span class="ytl-toggle__text">Skip existing localizations<span class="ytl-toggle__hint">Use Overwrite in the Studio modal to replace them.</span></span>
         </label>
       </section>
 
-      <div class="actions">
-        <button type="button" id="save" class="primary">Save</button>
-        <span id="status" role="status"></span>
+      <section class="ytl-card settings-section" aria-labelledby="sec-cache">
+        <div class="section-head">
+          <h2 class="section-title" id="sec-cache">Translation cache</h2>
+          <p class="ytl-field__hint" id="cacheStats" role="status">Loading…</p>
+        </div>
+        <div>
+          <button type="button" class="ytl-btn ytl-btn--danger" id="clearCache">Clear translation cache</button>
+        </div>
+      </section>
+
+      <div class="save-bar">
+        <span id="status" class="ytl-field__hint" role="status"></span>
+        <button type="button" id="save" class="ytl-btn ytl-btn--primary ytl-btn--lg">Save</button>
       </div>
     </main>
     <script type="module" src="/src/options.ts"></script>
